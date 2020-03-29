@@ -113,7 +113,7 @@ public class MemeCommand extends Command {
             loadMemesIntoMemory();
         }
 
-        SimplePaginator paginator = new SimplePaginator(memeKeys, 10);
+        SimplePaginator<String> paginator = new SimplePaginator<>(memeKeys, 10);
         if (args.length > 0) {
             paginator.setCurrentPage(NumberUtil.parseInt(args[0], 1));
         }
@@ -125,7 +125,7 @@ public class MemeCommand extends Command {
 
         context.makeSuccess(String.format("%s\n\n%s",
             String.join("\n", memesMessages),
-            paginator.generateFooter(generateCommandTrigger(context.getMessage()) + " list")
+            paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage()) + " list")
         )).setTitle("Memes").queue();
 
         // We're returning false here to prevent the Meme command from
@@ -170,7 +170,10 @@ public class MemeCommand extends Command {
     }
 
     private String formatMemeArgument(String string) {
-        return string.trim()
+        if (string.trim().length() == 0) {
+            return "_";
+        }
+        return string.trim().toLowerCase()
             .replaceAll("_", "__")
             .replaceAll("-", "--")
             .replaceAll(" ", "_")

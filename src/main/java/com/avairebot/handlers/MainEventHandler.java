@@ -25,6 +25,8 @@ import com.avairebot.AvaIre;
 import com.avairebot.contracts.handlers.EventHandler;
 import com.avairebot.database.controllers.PlayerController;
 import com.avairebot.handlers.adapter.*;
+import com.avairebot.metrics.Metrics;
+import net.dv8tion.jda.core.events.Event;
 import net.dv8tion.jda.core.events.ReadyEvent;
 import net.dv8tion.jda.core.events.ReconnectedEvent;
 import net.dv8tion.jda.core.events.ResumedEvent;
@@ -66,6 +68,7 @@ public class MainEventHandler extends EventHandler {
     private final MessageEventAdapter messageEvent;
     private final GuildStateEventAdapter guildStateEvent;
     private final JDAStateEventAdapter jdaStateEventAdapter;
+    private final ChangelogEventAdapter changelogEventAdapter;
     private final ReactionEmoteEventAdapter reactionEmoteEventAdapter;
 
     /**
@@ -82,7 +85,13 @@ public class MainEventHandler extends EventHandler {
         this.messageEvent = new MessageEventAdapter(avaire);
         this.guildStateEvent = new GuildStateEventAdapter(avaire);
         this.jdaStateEventAdapter = new JDAStateEventAdapter(avaire);
+        this.changelogEventAdapter = new ChangelogEventAdapter(avaire);
         this.reactionEmoteEventAdapter = new ReactionEmoteEventAdapter(avaire);
+    }
+
+    @Override
+    public void onGenericEvent(Event event) {
+        Metrics.jdaEvents.labels(event.getClass().getSimpleName()).inc();
     }
 
     @Override
@@ -162,11 +171,19 @@ public class MainEventHandler extends EventHandler {
 
     @Override
     public void onMessageReceived(MessageReceivedEvent event) {
+        if (changelogEventAdapter.isChangelogMessage(event.getChannel())) {
+            changelogEventAdapter.onMessageReceived(event);
+        }
+
         messageEvent.onMessageReceived(event);
     }
 
     @Override
     public void onGuildMessageDelete(GuildMessageDeleteEvent event) {
+        if (changelogEventAdapter.isChangelogMessage(event.getChannel())) {
+            changelogEventAdapter.onMessageDelete(event);
+        }
+
         messageEvent.onMessageDelete(event.getChannel(), Collections.singletonList(event.getMessageId()));
     }
 
@@ -177,6 +194,10 @@ public class MainEventHandler extends EventHandler {
 
     @Override
     public void onMessageUpdate(MessageUpdateEvent event) {
+        if (changelogEventAdapter.isChangelogMessage(event.getChannel())) {
+            changelogEventAdapter.onMessageUpdate(event);
+        }
+
         messageEvent.onMessageUpdate(event);
     }
 
@@ -248,7 +269,7 @@ public class MainEventHandler extends EventHandler {
     }
 
     private boolean isValidMessageReactionEvent(GenericMessageReactionEvent event) {
-        return !event.getMember().getUser().isBot()
+        return !event.getUser().isBot()
             && event.getGuild() != null
             && event.getReactionEmote().getEmote() != null;
     }

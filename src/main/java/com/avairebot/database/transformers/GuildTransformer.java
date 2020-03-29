@@ -46,6 +46,7 @@ public class GuildTransformer extends Transformer {
     private final Map<String, Map<String, String>> modules = new HashMap<>();
     private final List<ChannelTransformer> channels = new ArrayList<>();
     private final Set<Long> levelExemptChannels = new HashSet<>();
+    private final Set<Long> levelExemptRoles = new HashSet<>();
 
     private final GuildTypeTransformer guildType;
     private boolean partner;
@@ -63,6 +64,8 @@ public class GuildTransformer extends Transformer {
     private String modlog = null;
     private String musicChannelText = null;
     private String musicChannelVoice = null;
+    private String muteRole = null;
+    private String djRole = null;
     private int modlogCase = 0;
     private int defaultVolume = 100;
     private double levelModifier = -1;
@@ -98,11 +101,13 @@ public class GuildTransformer extends Transformer {
             levelModifier = data.getDouble("level_modifier", -1);
             autorole = data.getString("autorole");
             modlog = data.getString("modlog");
+            muteRole = data.getString("mute_role");
             musicChannelText = data.getString("music_channel_text");
             musicChannelVoice = data.getString("music_channel_voice");
             musicMessages = data.getBoolean("music_messages", true);
             modlogCase = data.getInt("modlog_case");
             djGuildLevel = DJGuildLevel.fromId(data.getInt("dj_level", DJGuildLevel.getNormal().getId()));
+            djRole = data.getString("dj_role");
             defaultVolume = data.getInt("default_volume", 100);
 
             // Sets the default volume to a value between 10 and 100.
@@ -166,6 +171,23 @@ public class GuildTransformer extends Transformer {
                 for (String channelId : dbExemptExperienceChannels) {
                     try {
                         levelExemptChannels.add(
+                            Long.parseLong(channelId)
+                        );
+                    } catch (NumberFormatException ignored) {
+                        //
+                    }
+                }
+            }
+
+            if (data.getString("level_exempt_roles", null) != null) {
+                List<String> dbExemptExperienceChannels = AvaIre.gson.fromJson(
+                    data.getString("level_exempt_roles"),
+                    new TypeToken<List<String>>() {
+                    }.getType());
+
+                for (String channelId : dbExemptExperienceChannels) {
+                    try {
+                        levelExemptRoles.add(
                             Long.parseLong(channelId)
                         );
                     } catch (NumberFormatException ignored) {
@@ -278,6 +300,10 @@ public class GuildTransformer extends Transformer {
         return levelExemptChannels;
     }
 
+    public Set<Long> getLevelExemptRoles() {
+        return levelExemptRoles;
+    }
+
     public String getAutorole() {
         return autorole;
     }
@@ -326,6 +352,14 @@ public class GuildTransformer extends Transformer {
         this.modlogCase = modlogCase;
     }
 
+    public String getMuteRole() {
+        return muteRole;
+    }
+
+    public void setMuteRole(String muteRole) {
+        this.muteRole = muteRole;
+    }
+
     public Map<String, String> getSelfAssignableRoles() {
         return selfAssignableRoles;
     }
@@ -344,6 +378,14 @@ public class GuildTransformer extends Transformer {
 
     public Map<String, Map<String, String>> getCategories() {
         return modules;
+    }
+
+    public String getDjRole() {
+        return djRole;
+    }
+
+    public void setDjRole(String djRole) {
+        this.djRole = djRole;
     }
 
     public DJGuildLevel getDJLevel() {

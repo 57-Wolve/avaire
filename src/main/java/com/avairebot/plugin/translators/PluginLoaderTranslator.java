@@ -21,18 +21,28 @@
 
 package com.avairebot.plugin.translators;
 
-import com.avairebot.contracts.plugin.Translator;
+import com.avairebot.contracts.plugin.Plugin;
 import com.avairebot.plugin.PluginHolder;
 import com.avairebot.plugin.PluginLoader;
 import com.avairebot.plugin.PluginRepository;
 
 import java.util.List;
 
-public class PluginLoaderTranslator implements Translator {
+public class PluginLoaderTranslator implements Plugin {
 
     private final PluginLoader loader;
     private PluginHolder holder = null;
 
+    /**
+     * Creates the new plugin loader translator instance, this is
+     * used to act as a mediator between the JSON data loaded
+     * from the plugins list from github, and the actual
+     * plugin data of the plugin that is installed.
+     *
+     * @param loader  The plugin loader for the installed plugin.
+     * @param plugins The list of plugins that should be matched
+     *                against the loaded plugin.
+     */
     public PluginLoaderTranslator(PluginLoader loader, List<PluginHolder> plugins) {
         this.loader = loader;
 

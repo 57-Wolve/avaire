@@ -22,6 +22,7 @@
 package com.avairebot.middleware;
 
 import com.avairebot.AvaIre;
+import com.avairebot.commands.CommandMessage;
 import com.avairebot.contracts.commands.CacheFingerprint;
 import com.avairebot.contracts.middleware.Middleware;
 import com.avairebot.contracts.middleware.ThrottleMessage;
@@ -30,6 +31,7 @@ import com.avairebot.metrics.Metrics;
 import com.avairebot.time.Carbon;
 import com.avairebot.utilities.CacheUtil;
 import com.avairebot.utilities.NumberUtil;
+import com.avairebot.utilities.RestActionUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
 import net.dv8tion.jda.core.entities.Message;
@@ -49,7 +51,7 @@ public class ThrottleMiddleware extends Middleware {
     }
 
     @Override
-    public String buildHelpDescription(@Nonnull String[] arguments) {
+    public String buildHelpDescription(@Nonnull CommandMessage context, @Nonnull String[] arguments) {
         return String.format("**This command can only be used `%s` time(s) every `%s` seconds per %s**",
             arguments[1], arguments[2], arguments[0].equalsIgnoreCase("guild") ? "server" : arguments[0]
         );
@@ -122,7 +124,7 @@ public class ThrottleMiddleware extends Middleware {
                 .set("command", stack.getCommand().getName())
                 .set("time", ((entity.getTime() - System.currentTimeMillis()) / 1000) + 1)
                 .set("prefix", stack.getCommand().generateCommandPrefix(message))
-                .queue(newMessage -> newMessage.delete().queueAfter(45, TimeUnit.SECONDS));
+                .queue(newMessage -> newMessage.delete().queueAfter(45, TimeUnit.SECONDS, null, RestActionUtil.ignore));
 
             return false;
         });

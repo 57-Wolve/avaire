@@ -37,7 +37,7 @@ public class AddLevelExemptChannelsToGuildsTableMigration implements Migration {
 
     @Override
     public boolean up(Schema schema) throws SQLException {
-        if (schema.hasColumn(Constants.GUILD_TABLE_NAME, "expires_in")) {
+        if (schema.hasColumn(Constants.GUILD_TABLE_NAME, "level_exempt_channels")) {
             return true;
         }
 

@@ -23,7 +23,7 @@ package com.avairebot.imagegen.renders;
 
 import com.avairebot.contracts.imagegen.Renderer;
 import com.avairebot.imagegen.Fonts;
-import com.avairebot.imagegen.RankBackgrounds;
+import com.avairebot.imagegen.RankBackground;
 import net.dv8tion.jda.core.entities.User;
 
 import javax.annotation.Nonnull;
@@ -31,6 +31,7 @@ import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLConnection;
@@ -46,8 +47,7 @@ public class RankBackgroundRender extends Renderer {
     private final String discriminator;
     private final String avatarUrl;
 
-    @Nonnull
-    private RankBackgrounds background;
+    private RankBackground background;
 
     private String rank = null;
     private String level = null;
@@ -79,20 +79,19 @@ public class RankBackgroundRender extends Renderer {
         this.username = username;
         this.discriminator = discriminator;
         this.avatarUrl = avatarUrl;
-        this.background = RankBackgrounds.getDefaultBackground();
+        this.background = null;
     }
 
     /**
-     * Sets the background that should be used for the render, if <code>NULL</code> is given the
-     * {@link RankBackgrounds#DEFAULT_BACKGROUND default background} will be used instead.
+     * Sets the background that should be used for the render.
+     * if <code>NULL</code> is given the
+     * background will be unable to render.
      *
      * @param background The background that should be used.
      * @return The rank background instance.
      */
-    public RankBackgroundRender setBackground(@Nullable RankBackgrounds background) {
-        this.background = background == null
-            ? RankBackgrounds.getDefaultBackground()
-            : background;
+    public RankBackgroundRender setBackground(@Nullable RankBackground background) {
+        this.background = background;
 
         return this;
     }
@@ -178,6 +177,7 @@ public class RankBackgroundRender extends Renderer {
     public boolean canRender() {
         return rank != null
             && level != null
+            && background != null
             && currentXpInLevel != null
             && totalXpInLevel != null
             && serverExperience != null
@@ -218,7 +218,7 @@ public class RankBackgroundRender extends Renderer {
     private BufferedImage loadAndBuildBackground() throws IOException {
         if (background.getBackgroundFile() != null) {
             return resize(
-                ImageIO.read(Renderer.class.getClassLoader().getResourceAsStream("backgrounds/" + background.getBackgroundFile())),
+                ImageIO.read(new FileInputStream("backgrounds/" + background.getBackgroundFile())),
                 200, 600
             );
         }
@@ -233,7 +233,7 @@ public class RankBackgroundRender extends Renderer {
     }
 
     private void createUserGraphics(Graphics2D graphics) {
-        graphics.setFont(Fonts.medium.deriveFont(Font.BOLD, 26F));
+        graphics.setFont(Fonts.bold.deriveFont(Font.PLAIN, 26F));
         graphics.setColor(background.getBackgroundColors().getMainTextColor());
 
         graphics.drawString(username, startingX + 5, startingY);
@@ -261,7 +261,7 @@ public class RankBackgroundRender extends Renderer {
         // Create the text that should be displayed in the middle of the XP bar
         graphics.setColor(background.getBackgroundColors().getExperienceTextColor());
 
-        Font smallText = Fonts.regular.deriveFont(Font.BOLD, 20F);
+        Font smallText = Fonts.medium.deriveFont(Font.PLAIN, 20F);
         graphics.setFont(smallText);
 
         FontMetrics fontMetrics = graphics.getFontMetrics(smallText);
@@ -276,7 +276,7 @@ public class RankBackgroundRender extends Renderer {
         graphics.drawString("LEVEL", 35, 140);
 
         FontMetrics infoTextGraphicsFontMetricsLarge = graphics.getFontMetrics();
-        graphics.setFont(Fonts.bold.deriveFont(Font.BOLD, 48));
+        graphics.setFont(Fonts.extraBold.deriveFont(Font.PLAIN, 48));
 
         FontMetrics infoTextGraphicsFontMetricsSmall = graphics.getFontMetrics();
         graphics.drawString(level, 35 + (
@@ -286,7 +286,7 @@ public class RankBackgroundRender extends Renderer {
         // Create Score Text
         graphics.setFont(Fonts.medium.deriveFont(Font.PLAIN, 28));
         graphics.drawString("RANK", 165, 140);
-        graphics.setFont(Fonts.bold.deriveFont(Font.BOLD, 48));
+        graphics.setFont(Fonts.extraBold.deriveFont(Font.PLAIN, 48));
         graphics.drawString(rank, 165 + (
             (infoTextGraphicsFontMetricsLarge.stringWidth("RANK") - infoTextGraphicsFontMetricsSmall.stringWidth(rank)) / 2
         ), 185);

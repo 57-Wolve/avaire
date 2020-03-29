@@ -32,6 +32,7 @@ import com.avairebot.factories.MessageFactory;
 import com.avairebot.language.I18n;
 import com.avairebot.scheduler.ScheduleHandler;
 import com.avairebot.utilities.CacheUtil;
+import com.avairebot.utilities.NumberUtil;
 import com.avairebot.utilities.RandomUtil;
 import com.avairebot.utilities.RoleUtil;
 import com.google.common.cache.Cache;
@@ -43,6 +44,7 @@ import net.dv8tion.jda.core.entities.TextChannel;
 import net.dv8tion.jda.core.entities.User;
 import net.dv8tion.jda.core.events.message.MessageReceivedEvent;
 
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -81,13 +83,34 @@ public class LevelManager {
     private static final double M = 0.3715D;
 
     /**
+     * The hard cap for XP, if a user is at or above the number
+     * below, they should be reset back to the number of XP,
+     * and not be allowed to receive anymore XP.
+     */
+    private static final long hardCap = Long.MAX_VALUE - 89;
+
+    /**
+     * The max amount of randomized XP a user will
+     * receive when they send a message.
+     */
+    private static final int maxRandomExperience = 5;
+
+    /**
+     * The max amount of guaranteed XP a user will
+     * receive when they send a message.
+     */
+    private static final int maxGuaranteeExperience = 10;
+
+    /**
      * The quadratic equation `a` value.
      */
     private final int A = 5;
+
     /**
      * The quadratic equation `b` value.
      */
     private final int B = 50;
+
     /**
      * The quadratic equation `c` value.
      */
@@ -100,6 +123,15 @@ public class LevelManager {
      */
     public static double getDefaultModifier() {
         return M;
+    }
+
+    /**
+     * Gets the hard cap for XP.
+     *
+     * @return The hard cap for XP.
+     */
+    public static long getHardCap() {
+        return hardCap;
     }
 
     /**
@@ -191,13 +223,21 @@ public class LevelManager {
      * @param guild  The guild transformer from the current guild database instance.
      * @param player The player transformer from the current player database instance.
      */
-    public void rewardPlayer(MessageReceivedEvent event, GuildTransformer guild, PlayerTransformer player) {
+    public void rewardPlayer(@Nonnull MessageReceivedEvent event, @Nonnull GuildTransformer guild, @Nonnull PlayerTransformer player) {
         if (guild.getLevelExemptChannels().contains(event.getChannel().getIdLong())) {
             return;
         }
 
+        if (!guild.getLevelExemptRoles().isEmpty()) {
+            for (Role role : event.getMember().getRoles()) {
+                if (guild.getLevelExemptRoles().contains(role.getIdLong())) {
+                    return;
+                }
+            }
+        }
+
         CacheUtil.getUncheckedUnwrapped(cache, asKey(event), () -> {
-            giveExperience(event.getMessage(), guild, player);
+            giveExperience(event.getMessage(), event.getMessage().getAuthor(), guild, player);
             return 0;
         });
     }
@@ -212,12 +252,22 @@ public class LevelManager {
      * @param user    The user that should be given the experience.
      * @param amount  The amount of experience that should be given to the user.
      */
-    public void giveExperience(AvaIre avaire, Message message, User user, int amount) {
+    public void giveExperience(@Nonnull AvaIre avaire, @Nonnull Message message, @Nonnull User user, int amount) {
         if (!message.getChannelType().isGuild()) {
             return;
         }
 
-        giveExperience(message, GuildController.fetchGuild(avaire, message), PlayerController.fetchPlayer(avaire, message, user), amount);
+        GuildTransformer guildTransformer = GuildController.fetchGuild(avaire, message);
+        if (guildTransformer == null) {
+            return;
+        }
+
+        PlayerTransformer playerTransformer = PlayerController.fetchPlayer(avaire, message, user);
+        if (playerTransformer == null) {
+            return;
+        }
+
+        giveExperience(message, user, guildTransformer, playerTransformer, amount);
     }
 
     /**
@@ -226,11 +276,12 @@ public class LevelManager {
      * transformer, storing it temporarily in memory.
      *
      * @param message The guild message event that should be used.
+     * @param user    The user instance used to represent the user in JDA.
      * @param guild   The guild transformer for the guild the player is from.
      * @param player  The player that should be given the experience.
      */
-    public void giveExperience(Message message, GuildTransformer guild, PlayerTransformer player) {
-        giveExperience(message, guild, player, (RandomUtil.getInteger(5) + 10));
+    public void giveExperience(@Nonnull Message message, @Nonnull User user, @Nonnull GuildTransformer guild, @Nonnull PlayerTransformer player) {
+        giveExperience(message, user, guild, player, (RandomUtil.getInteger(maxRandomExperience) + maxGuaranteeExperience));
     }
 
     /**
@@ -238,21 +289,28 @@ public class LevelManager {
      * saving it to the transformer, storing it temporarily in memory.
      *
      * @param message The guild message event that should be used.
+     * @param user    The user instance used to represent the user in JDA.
      * @param guild   The guild transformer for the guild the player is from.
      * @param player  The player that should be given the experience.
      * @param amount  The amount of experience that should be given to the player.
      */
-    public void giveExperience(Message message, GuildTransformer guild, PlayerTransformer player, int amount) {
+    public void giveExperience(@Nonnull Message message, @Nonnull User user, @Nonnull GuildTransformer guild, @Nonnull PlayerTransformer player, int amount) {
         long exp = player.getExperience();
         long zxp = getExperienceFromLevel(guild, 0) - 100;
         long lvl = getLevelFromExperience(guild, exp + zxp);
 
         player.incrementExperienceBy(amount);
 
+        boolean exclude = player.getExperience() >= getHardCap() - (maxRandomExperience + maxGuaranteeExperience) || player.getExperience() < -1;
+        if (exclude) {
+            player.setExperience(getHardCap());
+        }
+
         experienceQueue.add(new ExperienceEntity(
-            message.getAuthor().getIdLong(),
+            user.getIdLong(),
             message.getGuild().getIdLong(),
-            amount
+            amount,
+            exclude
         ));
 
         if (getLevelFromExperience(guild, player.getExperience() + zxp) > lvl) {
@@ -265,7 +323,7 @@ public class LevelManager {
                     .setColor(MessageType.SUCCESS.getColor())
                     .setDescription(loadRandomLevelupMessage(guild, hasLevelupRole))
                     .set("user", message.getAuthor().getAsMention())
-                    .set("level", newLevel);
+                    .set("level", NumberUtil.formatNicely(newLevel));
 
                 if (hasLevelupRole) {
                     Role levelRole = message.getGuild().getRoleById(guild.getLevelRoles().get((int) newLevel));
@@ -354,7 +412,7 @@ public class LevelManager {
      * @param transformer The transformer that should be matched with the experience eateries.
      * @return A list of experience entities that belongs to the given player transformer.
      */
-    public List<ExperienceEntity> getExperienceEntities(PlayerTransformer transformer) {
+    public List<ExperienceEntity> getExperienceEntities(@Nonnull PlayerTransformer transformer) {
         return experienceQueue.stream()
             .filter(entity -> entity.getUserId() == transformer.getUserId() && entity.getGuildId() == transformer.getGuildId())
             .collect(Collectors.toList());

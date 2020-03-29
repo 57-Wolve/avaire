@@ -31,7 +31,6 @@ import com.avairebot.contracts.handlers.EventAdapter;
 import com.avairebot.metrics.Metrics;
 import com.avairebot.scheduler.ScheduleHandler;
 import com.avairebot.scheduler.tasks.MusicActivityTask;
-import com.avairebot.shared.DiscordConstants;
 import com.avairebot.utilities.NumberUtil;
 import com.avairebot.utilities.RestActionUtil;
 import lavalink.client.io.jda.JdaLink;
@@ -87,7 +86,10 @@ public class GuildStateEventAdapter extends EventAdapter {
         Metrics.guilds.inc();
         Metrics.geoTracker.labels(event.getGuild().getRegion().getName()).inc();
 
-        TextChannel channel = avaire.getShardManager().getTextChannelById(DiscordConstants.ACTIVITY_LOG_CHANNEL_ID);
+        TextChannel channel = avaire.getShardManager().getTextChannelById(
+            avaire.getConstants().getActivityLogChannelId()
+        );
+
         if (channel == null) {
             return;
         }
@@ -134,7 +136,10 @@ public class GuildStateEventAdapter extends EventAdapter {
         Metrics.guilds.dec();
         Metrics.geoTracker.labels(guild.getRegion().getName()).dec();
 
-        TextChannel channel = avaire.getShardManager().getTextChannelById(DiscordConstants.ACTIVITY_LOG_CHANNEL_ID);
+        TextChannel channel = avaire.getShardManager().getTextChannelById(
+            avaire.getConstants().getActivityLogChannelId()
+        );
+
         if (channel == null) {
             return;
         }
@@ -172,10 +177,10 @@ public class GuildStateEventAdapter extends EventAdapter {
 
             if (LavalinkManager.LavalinkManagerHolder.lavalink.isEnabled()) {
                 JdaLink link = LavalinkManager.LavalinkManagerHolder.lavalink.getLavalink()
-                    .getLink(String.valueOf(guildId));
+                    .getExistingLink(String.valueOf(guildId));
 
 
-                if (!LavalinkManager.LavalinkManagerHolder.lavalink.isLinkBeingDestroyed(link)) {
+                if (link != null && !LavalinkManager.LavalinkManagerHolder.lavalink.isLinkBeingDestroyed(link)) {
                     link.destroy();
                 }
             }

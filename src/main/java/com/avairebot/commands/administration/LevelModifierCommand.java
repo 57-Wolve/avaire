@@ -80,9 +80,11 @@ public class LevelModifierCommand extends Command {
     @Override
     public List<Class<? extends Command>> getRelations() {
         return Arrays.asList(
+            AdministrateExperienceCommand.class,
             LevelHierarchyCommand.class,
             LevelAlertsCommand.class,
             ChannelLevelCommand.class,
+            RoleLevelCommand.class,
             LevelCommand.class,
             RankCommand.class
         );
@@ -141,8 +143,14 @@ public class LevelModifierCommand extends Command {
                 return false;
             }
 
-            context.makeSuccess(context.i18n("changedTo"))
+            context.makeSuccess(context.i18n("changedTo") + context.i18n("requiredIsNow"))
                 .set("modifier", NumberUtil.formatNicelyWithDecimals(modifier) + "%")
+                .addField(context.i18n("level", 5), getExperienceForLevel(guildTransformer, 5), true)
+                .addField(context.i18n("level", 10), getExperienceForLevel(guildTransformer, 10), true)
+                .addField(context.i18n("level", 25), getExperienceForLevel(guildTransformer, 25), true)
+                .addField(context.i18n("level", 50), getExperienceForLevel(guildTransformer, 50), true)
+                .addField(context.i18n("level", 100), getExperienceForLevel(guildTransformer, 100), true)
+                .addField(context.i18n("level", 200), getExperienceForLevel(guildTransformer, 200), true)
                 .queue();
 
             return true;
@@ -156,8 +164,14 @@ public class LevelModifierCommand extends Command {
             return false;
         }
 
-        context.makeSuccess(context.i18n("resetToDefault"))
+        context.makeSuccess(context.i18n("resetToDefault") + context.i18n("requiredIsNow"))
             .set("modifier", NumberUtil.formatNicelyWithDecimals(LevelManager.getDefaultModifier() * 100) + "%")
+            .addField(context.i18n("level", 5), getExperienceForLevel(guildTransformer, 5), true)
+            .addField(context.i18n("level", 10), getExperienceForLevel(guildTransformer, 10), true)
+            .addField(context.i18n("level", 25), getExperienceForLevel(guildTransformer, 25), true)
+            .addField(context.i18n("level", 50), getExperienceForLevel(guildTransformer, 50), true)
+            .addField(context.i18n("level", 100), getExperienceForLevel(guildTransformer, 100), true)
+            .addField(context.i18n("level", 200), getExperienceForLevel(guildTransformer, 200), true)
             .queue();
 
         return true;
@@ -182,7 +196,8 @@ public class LevelModifierCommand extends Command {
 
     private String getExperienceForLevel(GuildTransformer guildTransformer, int level) {
         return NumberUtil.formatNicely(
-            avaire.getLevelManager().getExperienceFromLevel(guildTransformer, level) - 100
+            avaire.getLevelManager().getExperienceFromLevel(guildTransformer, level)
+                - avaire.getLevelManager().getExperienceFromLevel(guildTransformer, 0)
         ) + " XP";
     }
 

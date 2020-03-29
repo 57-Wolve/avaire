@@ -137,15 +137,15 @@ public class LanguageCommand extends Command {
             items.add(String.format("`%s` %s", lang.getCode(), lang.getNativeName()));
         }
 
-        SimplePaginator paginator = new SimplePaginator(items, 10, pageNum);
+        SimplePaginator<String> paginator = new SimplePaginator<>(items, 10, pageNum);
 
         List<String> messages = new ArrayList<>();
-        paginator.forEach((index, key, val) -> messages.add((String) val));
+        paginator.forEach((index, key, val) -> messages.add(val));
 
         context.makeInfo(":note\n\n:languages\n\n:paginator")
             .set("note", context.i18n("note", generateCommandTrigger(context.message)))
             .set("languages", String.join("\n", messages))
-            .set("paginator", paginator.generateFooter(generateCommandTrigger(context.getMessage())))
+            .set("paginator", paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage())))
             .queue();
 
         return false;

@@ -24,6 +24,7 @@ package com.avairebot.config;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Arrays;
 import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -40,36 +41,38 @@ public class EnvironmentMacros {
      * Registers the default environment override macros.
      */
     public static void registerDefaults() {
-        if (!registerJAWSDB_URL()) {
-            log.warn("Failed to register the JAWSDB_URL environment variable macro, a macro with that name is already registered.");
+        for (String envString : Arrays.asList("JAWSDB_URL", "JAWSDB_MARIA_URL")) {
+            if (!registerJAWSDBString(envString)) {
+                log.warn("Failed to register the {} environment variable macro, a macro with that name is already registered.", envString);
+            }
         }
 
-        if (!registerMetricsPort()) {
+        if (!registerServletPort()) {
             log.warn("Failed to register the PORT environment variable macro, a macro with that name is already registered.");
         }
     }
 
-    private static boolean registerMetricsPort() {
+    private static boolean registerServletPort() {
         return EnvironmentOverride.registerMacro("PORT", (environmentValue, configuration) -> {
-            configuration.set("metrics.port", Integer.valueOf(environmentValue));
+            configuration.set("web-servlet.port", Integer.valueOf(environmentValue));
         });
     }
 
-    private static boolean registerJAWSDB_URL() {
-        return EnvironmentOverride.registerMacro("JAWSDB_URL", (environmentValue, configuration) -> {
+    private static boolean registerJAWSDBString(String name) {
+        return EnvironmentOverride.registerMacro(name, (environmentValue, configuration) -> {
             if (!configuration.isSet("database.type")) {
                 return;
             }
 
             Matcher matcher = jawsDBUrlPattern.matcher(environmentValue);
             if (!matcher.matches()) {
-                log.debug("Invalid JAWSDB URL environment variable was found, ignoring variable");
-                log.debug("JAWSDB URL environment value: " + environmentValue);
+                log.debug("Invalid {} URL environment variable was found, ignoring variable", name);
+                log.debug("{} environment value: {}", name, environmentValue);
                 return;
             }
 
-            log.debug("Valid JAWSDB URL environment variable was found, storing the variable to the config");
-            log.debug("JAWSDB URL environment value: " + environmentValue);
+            log.debug("Valid {} URL environment variable was found, storing the variable to the config", name);
+            log.debug("{} URL environment value: {}", name, environmentValue);
 
             MatchResult result = matcher.toMatchResult();
 

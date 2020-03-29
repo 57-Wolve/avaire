@@ -34,6 +34,7 @@ import net.dv8tion.jda.core.entities.Message;
 import net.dv8tion.jda.core.entities.MessageEmbed;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -52,8 +53,8 @@ public class VoiceFixCommand extends Command {
     }
 
     @Override
-    public String getDescription(CommandContext context) {
-        String prefix = context.isGuildMessage()
+    public String getDescription(@Nullable CommandContext context) {
+        String prefix = context != null && context.isGuildMessage()
             ? generateCommandPrefix(context.getMessage())
             : DiscordConstants.DEFAULT_COMMAND_PREFIX;
 
@@ -66,7 +67,7 @@ public class VoiceFixCommand extends Command {
             "fix music 99%s of the time.\n\n",
             "If you're still experiencing voice issues you can try making the bot leave the voice",
             "channel by using a command like `%sstop`, and then running this command again.\n\n",
-            "Still having issues even after all that?\nYou can join the [support server](https://discord.gg/gt2FWER)",
+            "Still having issues even after all that?\nYou can join the [support server](https://avairebot.com/support)",
             "to get help from the AvaIre support team directly."
         ), "%", prefix);
     }

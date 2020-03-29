@@ -93,8 +93,9 @@ public class ReactionController {
                     .orderBy("message_id")
                     .get();
             } catch (Exception ex) {
-                AvaIre.getLogger().error(ex.getMessage(), ex);
-                return null;
+                log.error(ex.getMessage(), ex);
+
+                return Collection.EMPTY_COLLECTION;
             }
         });
     }

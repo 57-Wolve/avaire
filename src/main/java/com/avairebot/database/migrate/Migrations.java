@@ -21,7 +21,6 @@
 
 package com.avairebot.database.migrate;
 
-
 import com.avairebot.contracts.database.migrations.Migration;
 import com.avairebot.database.DatabaseManager;
 import com.avairebot.database.collection.Collection;
@@ -83,7 +82,7 @@ public class Migrations {
      * If the DBM migrations table isn't found in the database, the table will be created.
      *
      * @return either (1) true if at-least one migration was migrated to the database successfully
-     * or (2) false if nothing was migrated to the database.
+     *         or (2) false if nothing was migrated to the database.
      * @throws SQLException if a database access error occurs,
      *                      this method is called on a closed <code>Statement</code>, the given
      *                      SQL statement produces anything other than a single
@@ -123,7 +122,7 @@ public class Migrations {
      * If the DBM migrations table isn't found in the database, the table will be created.
      *
      * @return either (1) true if at-least one migration was rolled back from the database successfully
-     * or (2) false if nothing was rolled back from the database.
+     *         or (2) false if nothing was rolled back from the database.
      * @throws SQLException if a database access error occurs,
      *                      this method is called on a closed <code>Statement</code>, the given
      *                      SQL statement produces anything other than a single
@@ -164,7 +163,7 @@ public class Migrations {
      *
      * @param steps the amount of steps to rollback
      * @return either (1) true if at-least one migration was rolled back from the database successfully
-     * or (2) false if nothing was rolled back from the database.
+     *         or (2) false if nothing was rolled back from the database.
      * @throws SQLException if a database access error occurs,
      *                      this method is called on a closed <code>Statement</code>, the given
      *                      SQL statement produces anything other than a single
@@ -199,6 +198,39 @@ public class Migrations {
         }
 
         return ranMigrations;
+    }
+
+    /**
+     * Reruns the given migration class by first rolling back the migration changes,
+     * and then re-running the up method to re-apply the migration.
+     *
+     * @param migration The migration that should be re-run.
+     * @return {@code True} if the migrations ran successfully.
+     * @throws SQLException if a database access error occurs,
+     *                      this method is called on a closed <code>Statement</code>, the given
+     *                      SQL statement produces anything other than a single
+     *                      <code>ResultSet</code> object, the method is called on a
+     *                      <code>PreparedStatement</code> or <code>CallableStatement</code>
+     */
+    public boolean rerun(Migration migration) throws SQLException {
+        MigrationContainer container = new MigrationContainer(migration);
+
+        for (MigrationContainer migrationContainer : migrations) {
+            if (migrationContainer.match(migration)) {
+                container.setBatch(migrationContainer.getBatch());
+                break;
+            }
+        }
+
+        migration.down(dbm.getSchema());
+        updateRemoteMigrationBatchValue(container, 0);
+        log.info("Rolled back \"{}\"", container.getName());
+
+        migration.up(dbm.getSchema());
+        updateRemoteMigrationBatchValue(container, 1);
+        log.info("Created \"{}\"", container.getName());
+
+        return true;
     }
 
     /**

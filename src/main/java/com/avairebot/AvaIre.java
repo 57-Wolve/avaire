@@ -26,6 +26,7 @@ import ch.qos.logback.classic.LoggerContext;
 import ch.qos.logback.classic.filter.ThresholdFilter;
 import com.avairebot.admin.BotAdmin;
 import com.avairebot.ai.IntelligenceManager;
+import com.avairebot.ai.dialogflow.DialogFlowService;
 import com.avairebot.audio.AudioHandler;
 import com.avairebot.audio.GuildMusicManager;
 import com.avairebot.audio.LavalinkManager;
@@ -34,41 +35,45 @@ import com.avairebot.blacklist.Blacklist;
 import com.avairebot.cache.CacheManager;
 import com.avairebot.cache.CacheType;
 import com.avairebot.chat.ConsoleColor;
+import com.avairebot.commands.CategoryDataContext;
 import com.avairebot.commands.CategoryHandler;
 import com.avairebot.commands.CommandHandler;
 import com.avairebot.commands.administration.ChangePrefixCommand;
+import com.avairebot.commands.utility.SourceCommand;
+import com.avairebot.commands.utility.StatsCommand;
 import com.avairebot.commands.utility.UptimeCommand;
-import com.avairebot.config.Configuration;
-import com.avairebot.config.EnvironmentMacros;
-import com.avairebot.config.EnvironmentOverride;
-import com.avairebot.contracts.ai.Intent;
+import com.avairebot.config.*;
 import com.avairebot.contracts.commands.Command;
-import com.avairebot.contracts.reflection.Reflectional;
+import com.avairebot.contracts.database.migrations.Migration;
+import com.avairebot.contracts.database.seeder.Seeder;
 import com.avairebot.contracts.scheduler.Job;
 import com.avairebot.database.DatabaseManager;
-import com.avairebot.database.migrate.migrations.*;
 import com.avairebot.database.serializer.PlaylistSongSerializer;
 import com.avairebot.database.transformers.PlaylistTransformer;
 import com.avairebot.exceptions.InvalidApplicationEnvironmentException;
 import com.avairebot.exceptions.InvalidPluginException;
 import com.avairebot.exceptions.InvalidPluginsPathException;
 import com.avairebot.handlers.EventEmitter;
-import com.avairebot.handlers.GenericEventHandler;
 import com.avairebot.handlers.MainEventHandler;
+import com.avairebot.handlers.PluginEventHandler;
 import com.avairebot.handlers.events.ApplicationShutdownEvent;
+import com.avairebot.imagegen.RankBackgroundHandler;
 import com.avairebot.language.I18n;
 import com.avairebot.level.LevelManager;
 import com.avairebot.metrics.Metrics;
 import com.avairebot.middleware.*;
+import com.avairebot.mute.MuteManager;
 import com.avairebot.plugin.PluginLoader;
 import com.avairebot.plugin.PluginManager;
 import com.avairebot.scheduler.ScheduleHandler;
+import com.avairebot.servlet.WebServlet;
+import com.avairebot.servlet.routes.*;
 import com.avairebot.shard.ShardEntityCounter;
 import com.avairebot.shared.DiscordConstants;
 import com.avairebot.shared.ExitCodes;
 import com.avairebot.shared.SentryConstants;
 import com.avairebot.time.Carbon;
-import com.avairebot.utilities.JarUtil;
+import com.avairebot.utilities.AutoloaderUtil;
 import com.avairebot.vote.VoteManager;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -86,7 +91,6 @@ import net.dv8tion.jda.core.JDA;
 import net.dv8tion.jda.core.JDAInfo;
 import net.dv8tion.jda.core.entities.Game;
 import net.dv8tion.jda.core.entities.SelfUser;
-import net.dv8tion.jda.core.hooks.ListenerAdapter;
 import net.dv8tion.jda.core.requests.RestAction;
 import net.dv8tion.jda.core.utils.SessionControllerAdapter;
 import net.dv8tion.jda.core.utils.cache.CacheFlag;
@@ -96,13 +100,11 @@ import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nullable;
 import javax.security.auth.login.LoginException;
+import java.io.FileWriter;
 import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.net.URISyntaxException;
 import java.sql.SQLException;
 import java.util.*;
 import java.util.concurrent.ScheduledFuture;
-import java.util.function.Consumer;
 
 public class AvaIre {
 
@@ -116,9 +118,13 @@ public class AvaIre {
         .create();
 
     private static final Logger log = LoggerFactory.getLogger(AvaIre.class);
+
+    protected static AvaIre avaire;
+
     private static Environment applicationEnvironment;
     private final Settings settings;
     private final Configuration config;
+    private final ConstantsConfiguration constants;
     private final CacheManager cache;
     private final Blacklist blacklist;
     private final DatabaseManager database;
@@ -126,17 +132,18 @@ public class AvaIre {
     private final IntelligenceManager intelligenceManager;
     private final PluginManager pluginManager;
     private final VoteManager voteManager;
+    private final MuteManager muteManger;
     private final ShardEntityCounter shardEntityCounter;
     private final EventEmitter eventEmitter;
     private final BotAdmin botAdmins;
-
+    private final WebServlet servlet;
     private Carbon shutdownTime = null;
     private int shutdownCode = ExitCodes.EXIT_CODE_RESTART;
-
     private ShardManager shardManager = null;
 
     public AvaIre(Settings settings) throws IOException, SQLException, InvalidApplicationEnvironmentException {
         this.settings = settings;
+        AvaIre.avaire = this;
 
         System.out.println(getVersionInfo(settings));
 
@@ -152,20 +159,28 @@ public class AvaIre {
         this.levelManager = new LevelManager();
 
         log.info("Loading configuration");
+        constants = new ConstantsConfiguration(this);
         config = new Configuration(this, null, "config.yml");
-        if (!config.exists()) {
-            getLogger().info("The {} configuration file is missing!", "config.yml");
-            getLogger().info("Creating file and terminating program...");
+        if (!config.exists() || !constants.exists()) {
+            getLogger().info("The {} or {} configuration files is missing!", "config.yml", "constants.yml");
+            getLogger().info(settings.isGenerateJsonFileMode()
+                ? "Creating files and skipping terminating process due to command generation flag. "
+                : "Creating files and terminating program..."
+            );
 
             config.saveDefaultConfig();
+            constants.saveDefaultConfig();
 
-            System.exit(ExitCodes.EXIT_CODE_NORMAL);
+            if (!settings.isGenerateJsonFileMode()) {
+                System.exit(ExitCodes.EXIT_CODE_NORMAL);
+            }
         }
 
         if (settings.useEnvOverride()) {
             log.debug("Environment override is enabled, looking for environment variables and replacing the config equivalent values");
             EnvironmentMacros.registerDefaults();
             EnvironmentOverride.overrideWithPrefix("AVA", config);
+            EnvironmentOverride.overrideWithPrefix("AVA", constants);
         }
 
         botAdmins = new BotAdmin(this, Collections.unmodifiableSet(new HashSet<>(
@@ -176,6 +191,7 @@ public class AvaIre {
         if (applicationEnvironment == null) {
             throw new InvalidApplicationEnvironmentException(config.getString("environment", "production"));
         }
+
         log.info("Starting application in \"{}\" mode", applicationEnvironment.getName());
         if (applicationEnvironment.equals(Environment.DEVELOPMENT)) {
             RestAction.setPassContext(true);
@@ -187,42 +203,18 @@ public class AvaIre {
             log.info("Enabling rest action context parsing and printing stack traces for optimal debugging");
         }
 
-        log.info("Registering and connecting to database");
+        log.info("Registering database, query builder, schema builder, and services");
         database = new DatabaseManager(this);
 
         log.info("Registering database table migrations");
-        database.getMigrations().register(
-            new CreateGuildTableMigration(),
-            new CreateGuildTypeTableMigration(),
-            new CreateBlacklistTableMigration(),
-            new CreatePlayerExperiencesTableMigration(),
-            new CreateFeedbackTableMigration(),
-            new CreateMusicPlaylistsTableMigration(),
-            new CreateStatisticsTableMigration(),
-            new CreateShardsTableMigration(),
-            new AddDJLevelToGuildsTableMigration(),
-            new RenamePlaylistSizeColumnToAmountMigration(),
-            new AddModlogToGuildsTableMigration(),
-            new AddLevelRolesToGuildsTableMigration(),
-            new CreateVotesTableMigration(),
-            new AddDefaultVolumeToGuildsTableMigration(),
-            new AddRolesDataToGuildsTableMigration(),
-            new CreateLogTypeTableMigration(),
-            new CreateLogTableMigration(),
-            new ReformatBlacklistTableMigration(),
-            new AddVotePointsToUsersAndGuildsTableMigration(),
-            new AddMusicChannelToGuildsTableMigration(),
-            new AddExpiresInFieldToBlacklistTableMigration(),
-            new AddOptInToVotesTableMigration(),
-            new RecreateFeedbackTableMigration(),
-            new AddMusicMessagesToGuildsTableMigration(),
-            new AddPartnerToGuildsTableMigration(),
-            new AddHierarchyToGuildsTableMigration(),
-            new AddLevelModifierToGuildsTableMigration(),
-            new AddPardonToLogTableMigration(),
-            new CreateReactionRoleTableMigration(),
-            new AddLevelExemptChannelsToGuildsTableMigration()
-        );
+        AutoloaderUtil.load(Constants.PACKAGE_MIGRATION_PATH, migration -> {
+            database.getMigrations().register((Migration) migration);
+        }, false);
+
+        log.info("Registering database table seeders");
+        AutoloaderUtil.load(Constants.PACKAGE_SEEDER_PATH, seeder -> {
+            database.getSeeder().register((Seeder) seeder);
+        }, true);
 
         log.info("Registering default middlewares");
         MiddlewareHandler.initialize(this);
@@ -258,35 +250,36 @@ public class AvaIre {
 
         log.info("Registering commands...");
         if (settings.isMusicOnlyMode()) {
+            CommandHandler.register(new StatsCommand(this));
             CommandHandler.register(new UptimeCommand(this));
+            CommandHandler.register(new SourceCommand(this));
             CommandHandler.register(new ChangePrefixCommand(this));
-            autoloadPackage(Constants.PACKAGE_COMMAND_PATH + ".help", command -> CommandHandler.register((Command) command));
-            autoloadPackage(Constants.PACKAGE_COMMAND_PATH + ".music", command -> CommandHandler.register((Command) command));
-            autoloadPackage(Constants.PACKAGE_COMMAND_PATH + ".system", command -> CommandHandler.register((Command) command));
+            AutoloaderUtil.load(Constants.PACKAGE_COMMAND_PATH + ".help", command -> CommandHandler.register((Command) command));
+            AutoloaderUtil.load(Constants.PACKAGE_COMMAND_PATH + ".music", command -> CommandHandler.register((Command) command));
+            AutoloaderUtil.load(Constants.PACKAGE_COMMAND_PATH + ".system", command -> CommandHandler.register((Command) command));
         } else {
-            autoloadPackage(Constants.PACKAGE_COMMAND_PATH, command -> CommandHandler.register((Command) command));
+            AutoloaderUtil.load(Constants.PACKAGE_COMMAND_PATH, command -> CommandHandler.register((Command) command));
         }
         log.info(String.format("\tRegistered %s commands successfully!", CommandHandler.getCommands().size()));
 
         log.info("Registering jobs...");
-        autoloadPackage(Constants.PACKAGE_JOB_PATH, job -> ScheduleHandler.registerJob((Job) job));
+        AutoloaderUtil.load(Constants.PACKAGE_JOB_PATH, job -> ScheduleHandler.registerJob((Job) job));
         log.info(String.format("\tRegistered %s jobs successfully!", ScheduleHandler.entrySet().size()));
 
+        log.info("Preparing Intelligence Manager");
         intelligenceManager = new IntelligenceManager(this);
-        if (intelligenceManager.isEnabled()) {
-            log.info("Registering intents...");
-            autoloadPackage(Constants.PACKAGE_INTENTS_PATH, intent -> intelligenceManager.registerIntent((Intent) intent));
-            log.info(String.format("\tRegistered %s intelligence intents successfully!", intelligenceManager.entrySet().size()));
-        }
 
         log.info("Preparing I18n");
         I18n.start(this);
 
+        log.info("Creating rank backgrounds");
+        RankBackgroundHandler.getInstance().start();
+
         log.info("Creating plugin manager and registering plugins...");
-        pluginManager = new PluginManager();
+        pluginManager = new PluginManager(this);
 
         try {
-            pluginManager.loadPlugins();
+            pluginManager.loadPlugins(this);
 
             if (pluginManager.getPlugins().isEmpty()) {
                 log.info("\tNo plugins was found");
@@ -312,12 +305,66 @@ public class AvaIre {
             System.exit(ExitCodes.EXIT_CODE_ERROR);
         }
 
-        log.info("Running database migrations");
+        if (settings.isGenerateJsonFileMode()) {
+            log.info("");
+            log.info("Preparations for generating the command file have finished!");
+            log.info("Generating file...");
+
+            LinkedHashMap<String, CategoryDataContext> map = CommandHandler.generateCommandMapFrom(null);
+
+            try (FileWriter file = new FileWriter("commandMap.json")) {
+                file.write(AvaIre.gson.toJson(map));
+
+                log.info("The `commandMap.json` file has been generated successfully!");
+            } catch (IOException e) {
+                log.error("Something went wrong while trying to save the command map: {}", e.getMessage(), e);
+                System.exit(ExitCodes.EXIT_CODE_ERROR);
+            }
+
+            System.exit(ExitCodes.EXIT_CODE_NORMAL);
+        }
+
+        if (intelligenceManager.getService() == null) {
+            log.info("No default AI service has been registered, registering the DialogFlow service");
+            intelligenceManager.registerService(new DialogFlowService());
+        }
+
+        log.info("Connecting to database & Running migrations & Seeders");
         database.getMigrations().up();
+        database.getSeeder().run();
+
+        if (settings.usePluginsIndex()) {
+            log.info("Loads plugins from the plugin index");
+            pluginManager.loadPluginsFromIndex(avaire);
+        }
 
         log.info("Preparing blacklist and syncing the list with the database");
         blacklist = new Blacklist(this);
         blacklist.syncBlacklistWithDatabase();
+
+        log.info("Preparing and setting up web servlet");
+        servlet = new WebServlet(config.getInt("web-servlet.port",
+            config.getInt("metrics.port", WebServlet.defaultPort)
+        ));
+
+        if (getConfig().getBoolean("web-servlet.api-routes.leaderboard", true)) {
+            servlet.registerGet("/leaderboard/:id", new GetLeaderboardPlayers());
+        }
+
+        if (getConfig().getBoolean("web-servlet.api-routes.players", true)) {
+            servlet.registerGet("/players/cleanup", new GetPlayerCleanup());
+        }
+
+        if (getConfig().getBoolean("web-servlet.api-routes.guilds", true)) {
+            servlet.registerPost("/guilds/cleanup", new PostGuildCleanup());
+            servlet.registerGet("/guilds/cleanup", new GetGuildCleanup());
+            servlet.registerGet("/guilds/:ids/exists", new GetGuildsExists());
+            servlet.registerGet("/guilds/:ids", new GetGuilds());
+        }
+
+        if (getConfig().getBoolean("web-servlet.api-routes.stats", true)) {
+            servlet.registerGet("/stats", new GetStats());
+        }
 
         log.info("Preparing and setting up metrics");
         Metrics.setup(this);
@@ -352,6 +399,9 @@ public class AvaIre {
         log.info("Preparing vote manager");
         voteManager = new VoteManager(this);
 
+        log.info("Preparing mute manager");
+        muteManger = new MuteManager(this);
+
         log.info("Preparing Lavalink");
         AudioHandler.setAvaire(this);
         LavalinkManager.LavalinkManagerHolder.lavalink.start(this);
@@ -384,6 +434,10 @@ public class AvaIre {
 
     public static Environment getEnvironment() {
         return applicationEnvironment;
+    }
+
+    public static AvaIre getInstance() {
+        return avaire;
     }
 
     static String getVersionInfo(@Nullable Settings settings) {
@@ -449,6 +503,10 @@ public class AvaIre {
         return config;
     }
 
+    public ConstantsConfiguration getConstants() {
+        return constants;
+    }
+
     public CacheManager getCache() {
         return cache;
     }
@@ -473,6 +531,14 @@ public class AvaIre {
         return voteManager;
     }
 
+    public MuteManager getMuteManger() {
+        return muteManger;
+    }
+
+    public WebServlet getServlet() {
+        return servlet;
+    }
+
     public IntelligenceManager getIntelligenceManager() {
         return intelligenceManager;
     }
@@ -494,6 +560,16 @@ public class AvaIre {
             eventEmitter.push(new ApplicationShutdownEvent(shardManager.getShards().get(0), exitCode));
         }
 
+        intelligenceManager.unregisterService();
+
+        FeatureToggleContextHandler.saveToStorage();
+
+        for (ScheduledFuture<?> scheduledFuture : ScheduleHandler.entrySet()) {
+            scheduledFuture.cancel(false);
+        }
+
+        long shutdownDelay = 1500L;
+
         getLogger().info("Shutting down bot instance gracefully with exit code " + exitCode);
 
         List<AudioState> audioStates = new ArrayList<>();
@@ -502,6 +578,7 @@ public class AvaIre {
                 manager.getLastActiveMessage().makeInfo(
                     "Bot is restarting, sorry for the inconvenience, we'll be right back!"
                 ).queue();
+                shutdownDelay += 100L;
             }
 
             try {
@@ -528,8 +605,14 @@ public class AvaIre {
 
                 if (player.getLink() != null && !state.equals(Link.State.DESTROYED) && !state.equals(Link.State.DESTROYING)) {
                     player.getLink().destroy();
+                    shutdownDelay += 100;
                 }
             }
+        }
+
+        if (LavalinkManager.LavalinkManagerHolder.lavalink.isEnabled()) {
+            shutdownDelay += LavalinkManager.LavalinkManagerHolder.lavalink.getLavalink().getNodes().size() * 500L;
+            LavalinkManager.LavalinkManagerHolder.lavalink.getLavalink().shutdown();
         }
 
         // Caches the audio state for the next three hours so we
@@ -537,7 +620,16 @@ public class AvaIre {
         cache.getAdapter(CacheType.FILE).put("audio.state", gson.toJson(audioStates), 60 * 60 * 3);
 
         try {
-            Thread.sleep(2500);
+            if (shutdownDelay > 5000L) {
+                // If the shutdown delay is anymore than 5 seconds, we just set it to a
+                // fixed 5 seconds delay, this should help prevent the bot staying up
+                // for longer than it really should, even when there is a lot
+                // of things to shutdown.
+                shutdownDelay = 5000L;
+            }
+
+            log.info("Shutting down processes, waiting {} milliseconds for processes to finish shutting down.", shutdownDelay);
+            Thread.sleep(shutdownDelay);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
@@ -556,17 +648,6 @@ public class AvaIre {
             getDatabase().getConnection().close();
         } catch (SQLException ex) {
             getLogger().error("Failed to close database connection during shutdown: ", ex);
-        }
-
-        if (exitCode != ExitCodes.EXIT_CODE_NORMAL && settings.useInternalRestart()) {
-            try {
-                ProcessBuilder process = JarUtil.rebuildJarExecution(settings);
-                if (process != null) {
-                    process.start();
-                }
-            } catch (URISyntaxException | IOException e) {
-                log.error("Failed starting jar file: {}", e.getMessage(), e);
-            }
         }
 
         System.exit(exitCode);
@@ -598,22 +679,20 @@ public class AvaIre {
             .setDisabledCacheFlags(EnumSet.of(CacheFlag.GAME))
             .setShardsTotal(settings.getShardCount());
 
+        if (settings.getShards() != null) {
+            builder.setShards(settings.getShards());
+        }
+
         if (isNas()) {
             builder.setAudioSendFactory(new NativeAudioSendFactory(800));
         }
 
         builder
             .addEventListeners(new MainEventHandler(this))
-            .addEventListeners(new GenericEventHandler(this));
+            .addEventListeners(new PluginEventHandler(this));
 
         if (LavalinkManager.LavalinkManagerHolder.lavalink.isEnabled()) {
             builder.addEventListeners(LavalinkManager.LavalinkManagerHolder.lavalink.getLavalink());
-        }
-
-        for (PluginLoader plugin : getPluginManager().getPlugins()) {
-            for (ListenerAdapter listener : plugin.getEventListeners()) {
-                builder.addEventListeners(listener);
-            }
         }
 
         return builder.build();
@@ -642,25 +721,5 @@ public class AvaIre {
             root.addAppender(sentryAppender);
         }
         return sentryAppender;
-    }
-
-    private void autoloadPackage(String path, Consumer<Reflectional> callback) {
-        Set<Class<? extends Reflectional>> types = new Reflections(path).getSubTypesOf(Reflectional.class);
-
-        Class[] arguments = new Class[1];
-        arguments[0] = AvaIre.class;
-
-        for (Class<? extends Reflectional> reflectionClass : types) {
-            if (reflectionClass.getPackage().getName().contains("contracts")) {
-                continue;
-            }
-
-            try {
-                //noinspection JavaReflectionMemberAccess
-                callback.accept(reflectionClass.getDeclaredConstructor(arguments).newInstance(this));
-            } catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException e) {
-                getLogger().error("Failed to create a new instance of package {}", reflectionClass.getName(), e);
-            }
-        }
     }
 }

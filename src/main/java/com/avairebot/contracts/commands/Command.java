@@ -29,7 +29,6 @@ import com.avairebot.commands.CommandMessage;
 import com.avairebot.commands.CommandPriority;
 import com.avairebot.contracts.middleware.Middleware;
 import com.avairebot.contracts.reflection.Reflectionable;
-import com.avairebot.exceptions.MissingCommandDescriptionException;
 import com.avairebot.language.I18n;
 import com.avairebot.middleware.MiddlewareHandler;
 import com.avairebot.plugin.JavaPlugin;
@@ -38,11 +37,13 @@ import com.avairebot.utilities.StringReplacementUtil;
 import net.dv8tion.jda.core.entities.Message;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 public abstract class Command extends Reflectionable {
@@ -51,6 +52,13 @@ public abstract class Command extends Reflectionable {
      * Determines if the command can be used in direct messages or not.
      */
     protected final boolean allowDM;
+
+    /**
+     * RegEx pattern used to compare error messages with language string formats.
+     */
+    private final Pattern languageStringRegex = Pattern.compile(
+        "[A-Za-z\\.]+"
+    );
 
     /**
      * Create the given command instance by calling {@link #Command(AvaIre)} with the avaire instance and allowDM set to true.
@@ -108,10 +116,11 @@ public abstract class Command extends Reflectionable {
      * If this method is not overwritten the {@link #getDescription()}
      * method will be called instead.
      *
-     * @param context The command context used to get the description.
+     * @param context The command message context generated using the
+     *                JDA message event that invoked the command.
      * @return Never-null, the command description.
      */
-    public String getDescription(CommandContext context) {
+    public String getDescription(@Nullable CommandContext context) {
         return getDescription();
     }
 
@@ -122,13 +131,28 @@ public abstract class Command extends Reflectionable {
      * @return Never-null, the command description.
      */
     public String getDescription() {
-        throw new MissingCommandDescriptionException(this);
+        return getDescription(null);
     }
 
     /**
      * Gets the command usage instructions for the given command, if the usage instructions
      * is set to null the {@link #generateUsageInstructions(Message)} method will just
      * return the command trigger in code syntax quotes.
+     *
+     * @param message The JDA message instanced used to invoke the command.
+     * @return Possibly-null, the command usage instructions.
+     */
+    public List<String> getUsageInstructions(@Nullable Message message) {
+        return getUsageInstructions();
+    }
+
+    /**
+     * Gets the command usage instructions for the given command, if the usage instructions
+     * is set to null the {@link #generateUsageInstructions(Message)} method will just
+     * return the command trigger in code syntax quotes.
+     * <p>
+     * If this method is not overwritten the {@link #getUsageInstructions(Message)}
+     * method will be called instead.
      *
      * @return Possibly-null, the command usage instructions.
      */
@@ -141,6 +165,22 @@ public abstract class Command extends Reflectionable {
      * using the command by example, if the example usage is set to null the
      * {@link #generateExampleUsage(Message)} method will just return the
      * command trigger in code syntax quotes.
+     *
+     * @param message The JDA message instanced used to invoke the command.
+     * @return Possibly-null, an example of how to use the command.
+     */
+    public List<String> getExampleUsage(@Nullable Message message) {
+        return getExampleUsage();
+    }
+
+    /**
+     * Get the example usage for the given command, this is used to help users with
+     * using the command by example, if the example usage is set to null the
+     * {@link #generateExampleUsage(Message)} method will just return the
+     * command trigger in code syntax quotes.
+     * <p>
+     * If this method is not overwritten the {@link #getExampleUsage(Message)}
+     * method will be called instead.
      *
      * @return Possibly-null, an example of how to use the command.
      */
@@ -228,7 +268,8 @@ public abstract class Command extends Reflectionable {
      * and the middleware stack when a user sends a message matching the
      * commands prefix and one of its command triggers.
      *
-     * @param context The JDA message object from the message received event.
+     * @param context The command message context generated using the
+     *                JDA message event that invoked the command.
      * @param args    The arguments given to the command, if no arguments was given the array will just be empty.
      * @return true on success, false on failure.
      */
@@ -238,13 +279,14 @@ public abstract class Command extends Reflectionable {
      * Builds and sends the given error message to the
      * given channel for the JDA message object.
      *
-     * @param context The JDA message object.
+     * @param context The command message context generated using the
+     *                JDA message event that invoked the command.
      * @param error   The error message that should be sent.
      * @param args    The array of arguments that should be replace in the error string.
      * @return false since the error message should only be used on failure.
      */
     public final boolean sendErrorMessage(CommandMessage context, String error, String... args) {
-        if (!error.contains(".") || error.contains(" ")) {
+        if (!isLanguageString(error)) {
             return sendErrorMessageAndDeleteMessage(
                 context, I18n.format(error, (Object[]) args), 150, TimeUnit.SECONDS
             );
@@ -262,12 +304,13 @@ public abstract class Command extends Reflectionable {
      * Builds and sends the given error message to the
      * given channel for the JDA message object.
      *
-     * @param context The JDA message object.
+     * @param context The command message context generated using the
+     *                JDA message event that invoked the command.
      * @param error   The error message that should be sent.
      * @return false since the error message should only be used on failure.
      */
     public final boolean sendErrorMessage(CommandMessage context, String error) {
-        if (!error.contains(".") || error.contains(" ")) {
+        if (!isLanguageString(error)) {
             return sendErrorMessageAndDeleteMessage(
                 context, error, 150, TimeUnit.SECONDS
             );
@@ -282,14 +325,15 @@ public abstract class Command extends Reflectionable {
      * Builds and sends the given error message to the given channel for the JDA
      * message object, then deletes the message again after the allotted time.
      *
-     * @param context  The JDA message object.
+     * @param context  The command message context generated using the
+     *                 JDA message event that invoked the command.
      * @param error    The error message that should be sent.
      * @param deleteIn The amount of time the message should stay up before being deleted.
      * @param unit     The unit of time before the message should be deleted.
      * @return false since the error message should only be used on failure.
      */
     public boolean sendErrorMessage(CommandMessage context, String error, long deleteIn, TimeUnit unit) {
-        if (error.contains(".") || !error.contains(" ")) {
+        if (isLanguageString(error)) {
             String i18nError = context.i18nRaw(error);
             if (i18nError != null) {
                 error = i18nError;
@@ -303,33 +347,13 @@ public abstract class Command extends Reflectionable {
         return sendErrorMessageAndDeleteMessage(context, error, deleteIn, unit);
     }
 
-    private boolean sendErrorMessageAndDeleteMessage(CommandMessage context, String error, long deleteIn, TimeUnit unit) {
-        PlaceholderMessage placeholderMessage = context.makeError(error)
-            .setTitle(getName())
-            .addField("Usage", generateUsageInstructions(context.getMessage()), false)
-            .addField("Example Usage", generateExampleUsage(context.getMessage()), false);
-
-        Category category = CategoryHandler.fromCommand(this);
-        if (category != null) {
-            placeholderMessage.setFooter("Command category: " + category.getName());
-        }
-
-        placeholderMessage.queue(message -> {
-            if (deleteIn <= 0) {
-                return;
-            }
-            message.delete().queueAfter(deleteIn, unit, null, RestActionUtil.ignore);
-        });
-
-        return false;
-    }
-
     /**
      * Generates the command description, any middlewares assigned to the command
      * will also be dynamically generated and added to the command description
      * two lines below the actually description.
      *
-     * @param context The JDA message object.
+     * @param context The command message context generated using the
+     *                JDA message event that invoked the command.
      * @return The generated command description.
      */
     public final String generateDescription(CommandMessage context) {
@@ -357,8 +381,8 @@ public abstract class Command extends Reflectionable {
             }
 
             String help = split.length == 1 ?
-                reference.buildHelpDescription(new String[0]) :
-                reference.buildHelpDescription(split[1].split(","));
+                reference.buildHelpDescription(context, new String[0]) :
+                reference.buildHelpDescription(context, split[1].split(","));
 
             if (help == null) {
                 continue;
@@ -371,7 +395,7 @@ public abstract class Command extends Reflectionable {
     }
 
     /**
-     * Generates the command usage instructions, if the {@link #getUsageInstructions()} is null
+     * Generates the command usage instructions, if the {@link #getUsageInstructions(Message)} is null
      * then the command trigger will just be returned instead inside of markdown code syntax,
      * if the usage instructions are not null, each item in the array will become a new line.
      *
@@ -379,9 +403,11 @@ public abstract class Command extends Reflectionable {
      * @return The usage instructions for the current command.
      */
     public final String generateUsageInstructions(Message message) {
+        List<String> usageInstructions = getUsageInstructions(message);
+
         return formatCommandGeneratorString(message,
-            getUsageInstructions() == null ? "`:command`" :
-                getUsageInstructions().stream()
+            usageInstructions == null ? "`:command`" :
+                usageInstructions.stream()
                     .collect(Collectors.joining("\n"))
         );
     }
@@ -394,12 +420,14 @@ public abstract class Command extends Reflectionable {
      * @return The example usage for the current command.
      */
     public final String generateExampleUsage(Message message) {
-        if (getExampleUsage() == null) {
+        List<String> exampleUsage = getExampleUsage(message);
+
+        if (exampleUsage == null) {
             return formatCommandGeneratorString(message, "`:command`");
         }
 
         return formatCommandGeneratorString(message,
-            getExampleUsage().isEmpty() ? "`:command`" : String.join("\n", getExampleUsage())
+            exampleUsage.isEmpty() ? "`:command`" : String.join("\n", exampleUsage)
         );
     }
 
@@ -436,8 +464,8 @@ public abstract class Command extends Reflectionable {
      */
     public final boolean isSame(Command command) {
         return Objects.equals(command.getName(), getName())
-            && Objects.equals(command.getUsageInstructions(), getUsageInstructions())
-            && Objects.equals(command.getExampleUsage(), getExampleUsage())
+            && Objects.equals(command.getUsageInstructions(null), getUsageInstructions(null))
+            && Objects.equals(command.getExampleUsage(null), getExampleUsage(null))
             && Objects.equals(command.getTriggers(), getTriggers());
     }
 
@@ -451,6 +479,32 @@ public abstract class Command extends Reflectionable {
      */
     private String formatCommandGeneratorString(Message message, String string) {
         return StringReplacementUtil.replaceAll(string, ":command", generateCommandTrigger(message));
+    }
+
+    private boolean sendErrorMessageAndDeleteMessage(CommandMessage context, String error, long deleteIn, TimeUnit unit) {
+        PlaceholderMessage placeholderMessage = context.makeError(error)
+            .setTitle(getName())
+            .addField("Usage", generateUsageInstructions(context.getMessage()), false)
+            .addField("Example Usage", generateExampleUsage(context.getMessage()), false);
+
+        Category category = CategoryHandler.fromCommand(this);
+        if (category != null) {
+            placeholderMessage.setFooter("Command category: " + category.getName());
+        }
+
+        placeholderMessage.queue(message -> {
+            if (deleteIn <= 0) {
+                return;
+            }
+            message.delete().queueAfter(deleteIn, unit, null, RestActionUtil.ignore);
+        });
+
+        return false;
+    }
+
+    private boolean isLanguageString(String string) {
+        return !string.contains(" ")
+            && languageStringRegex.matcher(string).matches();
     }
 
     @Override

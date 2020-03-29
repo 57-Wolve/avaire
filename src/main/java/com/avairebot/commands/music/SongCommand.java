@@ -68,7 +68,7 @@ public class SongCommand extends Command {
 
     @Override
     public List<String> getTriggers() {
-        return Arrays.asList("song", "songs", "queue");
+        return Arrays.asList("song", "songs", "queue", "np");
     }
 
     @Override
@@ -99,14 +99,12 @@ public class SongCommand extends Command {
                 return sendSongWithSixSongs(context, musicManager);
             }
 
-            SimplePaginator paginator = new SimplePaginator(
+            SimplePaginator<AudioTrackContainer> paginator = new SimplePaginator<>(
                 musicManager.getScheduler().getQueue().iterator(), 10, NumberUtil.parseInt(args[0])
             );
 
             List<String> messages = new ArrayList<>();
-            paginator.forEach((index, key, val) -> {
-                AudioTrackContainer track = (AudioTrackContainer) val;
-
+            paginator.forEach((index, key, track) -> {
                 messages.add(context.i18n("formats.line",
                     NumberUtil.parseInt(key.toString()) + 1,
                     track.getAudioTrack().getInfo().title,
@@ -116,7 +114,7 @@ public class SongCommand extends Command {
 
             context.makeSuccess(String.format("%s\n\n%s",
                 String.join("\n", messages),
-                paginator.generateFooter(generateCommandTrigger(context.getMessage()))
+                paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage()))
             )).setTitle(context.i18n("songsInQueue"))
                 .queue(message -> message.delete().queueAfter(3, TimeUnit.MINUTES, null, RestActionUtil.ignore));
 

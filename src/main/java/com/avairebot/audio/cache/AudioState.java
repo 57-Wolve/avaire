@@ -29,11 +29,13 @@ import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import net.dv8tion.jda.core.entities.Guild;
 import net.dv8tion.jda.core.entities.VoiceChannel;
 
+import javax.annotation.Nullable;
+import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
 
 @SuppressWarnings("unused")
-public class AudioState extends Evalable {
+public class AudioState extends Evalable implements Serializable {
 
     private final List<AudioCache> queue = new ArrayList<>();
     private final AudioCache playingTrack;
@@ -66,12 +68,13 @@ public class AudioState extends Evalable {
         AudioTrackContainer container = musicManager.getScheduler().getAudioTrackContainer();
 
         this.playingTrack = playingTrack == null ? null : new AudioCache(
-            playingTrack.getInfo().uri,
+            playingTrack,
             container != null ? container.getRequester().getIdLong() : 0L,
             playingTrack.getPosition()
         );
 
-        musicManager.getScheduler().getQueue().stream().map(AudioCache::new)
+        musicManager.getScheduler().getQueue().stream()
+            .map(AudioCache::new)
             .forEach(queue::add);
     }
 
@@ -92,6 +95,7 @@ public class AudioState extends Evalable {
      *
      * @return The audio track that was playing when the bot shut down.
      */
+    @Nullable
     public AudioCache getPlayingTrack() {
         return playingTrack;
     }

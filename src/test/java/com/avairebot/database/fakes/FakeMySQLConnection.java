@@ -39,7 +39,9 @@ import java.util.Map;
 
 public class FakeMySQLConnection extends FilenameDatabase {
 
-    FakeMySQLConnection() {
+    FakeMySQLConnection(DatabaseManager dbm) {
+        super(dbm);
+
         this.setFilename(":memory:");
     }
 
@@ -51,6 +53,11 @@ public class FakeMySQLConnection extends FilenameDatabase {
     @Override
     protected void queryValidation(StatementInterface paramStatement) throws SQLException {
 
+    }
+
+    @Override
+    public String prepareDataValueString(String str) {
+        return null;
     }
 
     @Override

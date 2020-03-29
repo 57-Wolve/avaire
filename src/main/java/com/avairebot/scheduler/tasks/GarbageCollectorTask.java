@@ -29,12 +29,14 @@ import com.avairebot.audio.LavalinkManager;
 import com.avairebot.blacklist.Ratelimit;
 import com.avairebot.cache.CacheType;
 import com.avairebot.cache.adapters.MemoryAdapter;
+import com.avairebot.commands.administration.MuteRoleCommand;
 import com.avairebot.contracts.commands.InteractionCommand;
 import com.avairebot.contracts.scheduler.Task;
 import com.avairebot.handlers.adapter.JDAStateEventAdapter;
 import com.avairebot.handlers.adapter.MessageEventAdapter;
 import com.avairebot.scheduler.jobs.LavalinkGarbageNodeCollectorJob;
 import lavalink.client.io.Link;
+import lavalink.client.io.jda.JdaLink;
 import net.dv8tion.jda.core.managers.AudioManager;
 
 import java.util.Map;
@@ -109,9 +111,11 @@ public class GarbageCollectorTask implements Task {
         // If Lavalink is enabled we'll use the Lavalink link state
         // for the current guild instead of the audio manager.
         if (LavalinkManager.LavalinkManagerHolder.lavalink.isEnabled()) {
-            if (isConnected(LavalinkManager.LavalinkManagerHolder.lavalink.getLavalink().getLink(
+            JdaLink link = LavalinkManager.LavalinkManagerHolder.lavalink.getLavalink().getExistingLink(
                 next.getValue().getLastActiveMessage().getGuild()
-            ).getState())) {
+            );
+
+            if (link != null && isConnected(link.getState())) {
                 return false;
             }
         } else {
@@ -150,6 +154,11 @@ public class GarbageCollectorTask implements Task {
         // autorole
         synchronized (JDAStateEventAdapter.cache) {
             JDAStateEventAdapter.cache.cleanUp();
+        }
+
+        // muterole
+        synchronized (MuteRoleCommand.cache) {
+            MuteRoleCommand.cache.cleanUp();
         }
 
         // lavalink-destroy-cleanup

@@ -30,6 +30,7 @@ import com.avairebot.contracts.commands.CommandGroup;
 import com.avairebot.contracts.commands.CommandGroups;
 import com.avairebot.database.transformers.GuildTransformer;
 import com.avairebot.utilities.NumberUtil;
+import net.dv8tion.jda.core.entities.Role;
 
 import javax.annotation.Nonnull;
 import java.util.ArrayList;
@@ -118,7 +119,7 @@ public class ListLevelRolesCommand extends Command {
 
         Collections.sort(keys);
 
-        SimplePaginator paginator = new SimplePaginator(keys, 10);
+        SimplePaginator<Integer> paginator = new SimplePaginator<>(keys, 10);
         if (args.length > 0) {
             paginator.setCurrentPage(NumberUtil.parseInt(args[0], 1));
         }
@@ -126,16 +127,21 @@ public class ListLevelRolesCommand extends Command {
         List<String> messages = new ArrayList<>();
         paginator.forEach((index, key, val) -> {
             //noinspection SuspiciousMethodCalls
-            messages.add(
-                String.format("`%s` => `%s`", val,
-                    context.getGuild().getRoleById(
-                        transformer.getLevelRoles().get(val)
-                    ).getName()
-                )
+            Role role = context.getGuild().getRoleById(
+                transformer.getLevelRoles().get(val)
             );
+
+            if (role != null) {
+                messages.add(
+                    String.format(
+                        "`%s` => `%s`",
+                        val, role.getName()
+                    )
+                );
+            }
         });
 
-        messages.add("\n" + paginator.generateFooter(generateCommandTrigger(context.getMessage())));
+        messages.add("\n" + paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage())));
 
         context.makeSuccess(String.join("\n", messages))
             .setTitle(context.i18n("listRoles", paginator.getTotal()))

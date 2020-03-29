@@ -28,6 +28,7 @@ import net.dv8tion.jda.core.entities.MessageChannel;
 import net.dv8tion.jda.core.entities.MessageEmbed;
 import net.dv8tion.jda.core.requests.restaction.MessageAction;
 
+import javax.annotation.Nullable;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
@@ -37,11 +38,32 @@ import java.util.function.Consumer;
 
 public abstract class Restable {
 
+    /**
+     * The message channel that the restable instance should be used for.
+     */
     protected final MessageChannel channel;
 
-    public Restable(MessageChannel channel) {
+    protected CheckPermissionUtil.PermissionCheckType channelPermissionType;
+
+    /**
+     * Creates a new restable instance for the given message channel, allowing
+     * for easy access to JDAs queue system for Rest messages, if no channel
+     * is given the message won't be able to be sent, and will throw a
+     * {@link RuntimeException runtime exception} instead.
+     *
+     * @param channel The channel that the message should be sent to, or {@code NULL}.
+     */
+    public Restable(@Nullable MessageChannel channel) {
         this.channel = channel;
     }
+
+    /**
+     * Builds the embedded message that should
+     * be sent to the set message channel.
+     *
+     * @return The JDA {@link MessageEmbed embed} instance.
+     */
+    public abstract MessageEmbed buildEmbed();
 
     /**
      * Submits a Request for execution.
@@ -51,8 +73,11 @@ public abstract class Restable {
      * <br>
      * <p><b>This method is asynchronous</b>
      */
-    public void queue() {
-        sendMessage().ifPresent(action -> action.queue(null, RestActionUtil.handleMessageCreate));
+    public final void queue() {
+        sendMessage().ifPresent(action -> action.queue(
+            message -> handleSuccessConsumer(message, null),
+            error -> handleFailureConsumer(error, null)
+        ));
     }
 
     /**
@@ -64,8 +89,11 @@ public abstract class Restable {
      * @param success The success callback that will be called at a convenient time
      *                for the API. (can be null)
      */
-    public void queue(Consumer<Message> success) {
-        sendMessage().ifPresent(action -> action.queue(success, RestActionUtil.handleMessageCreate));
+    public final void queue(Consumer<Message> success) {
+        sendMessage().ifPresent(action -> action.queue(
+            message -> handleSuccessConsumer(message, success),
+            error -> handleFailureConsumer(error, null)
+        ));
     }
 
     /**
@@ -78,8 +106,11 @@ public abstract class Restable {
      * @param failure The failure callback that will be called if the Request
      *                encounters an exception at its execution point.
      */
-    public void queue(Consumer<Message> success, Consumer<Throwable> failure) {
-        sendMessage().ifPresent(action -> action.queue(success, failure == null ? RestActionUtil.handleMessageCreate : failure));
+    public final void queue(Consumer<Message> success, Consumer<Throwable> failure) {
+        sendMessage().ifPresent(action -> action.queue(
+            message -> handleSuccessConsumer(message, success),
+            error -> handleFailureConsumer(error, failure)
+        ));
     }
 
     /**
@@ -98,13 +129,18 @@ public abstract class Restable {
      * @param delay The delay after which this computation should be executed, negative to execute immediately
      * @param unit  The {@link java.util.concurrent.TimeUnit TimeUnit} to convert the specified {@code delay}
      * @return {@link java.util.concurrent.ScheduledFuture ScheduledFuture}
-     * representing the delayed operation
+     *         representing the delayed operation
      * @throws java.lang.IllegalArgumentException If the provided TimeUnit is {@code null}
      */
-    public Future<?> queueAfter(long delay, TimeUnit unit) {
+    public final Future<?> queueAfter(long delay, TimeUnit unit) {
         Optional<MessageAction> messageAction = sendMessage();
         if (messageAction.isPresent()) {
-            return messageAction.get().queueAfter(delay, unit);
+            return messageAction.get().queueAfter(
+                delay,
+                unit,
+                message -> handleSuccessConsumer(message, null),
+                error -> handleFailureConsumer(error, null)
+            );
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -127,13 +163,18 @@ public abstract class Restable {
      * @param success The success {@link java.util.function.Consumer Consumer} that should be called
      *                once the {@link #queue(java.util.function.Consumer)} operation completes successfully.
      * @return {@link java.util.concurrent.ScheduledFuture ScheduledFuture}
-     * representing the delayed operation
+     *         representing the delayed operation
      * @throws java.lang.IllegalArgumentException If the provided TimeUnit is {@code null}
      */
-    public Future<?> queueAfter(long delay, TimeUnit unit, Consumer<Message> success) {
+    public final Future<?> queueAfter(long delay, TimeUnit unit, Consumer<Message> success) {
         Optional<MessageAction> messageAction = sendMessage();
         if (messageAction.isPresent()) {
-            return messageAction.get().queueAfter(delay, unit, success, RestActionUtil.handleMessageCreate);
+            return messageAction.get().queueAfter(
+                delay,
+                unit,
+                message -> handleSuccessConsumer(message, success),
+                error -> handleFailureConsumer(error, null)
+            );
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -156,13 +197,18 @@ public abstract class Restable {
      * @param failure The failure {@link java.util.function.Consumer Consumer} that should be called
      *                in case of an error of the {@link #queue(java.util.function.Consumer, java.util.function.Consumer)} operation.
      * @return {@link java.util.concurrent.ScheduledFuture ScheduledFuture}
-     * representing the delayed operation
+     *         representing the delayed operation
      * @throws java.lang.IllegalArgumentException If the provided TimeUnit is {@code null}
      */
-    public Future<?> queueAfter(long delay, TimeUnit unit, Consumer<Message> success, Consumer<Throwable> failure) {
+    public final Future<?> queueAfter(long delay, TimeUnit unit, Consumer<Message> success, Consumer<Throwable> failure) {
         Optional<MessageAction> messageAction = sendMessage();
         if (messageAction.isPresent()) {
-            return messageAction.get().queueAfter(delay, unit, success, failure == null ? RestActionUtil.handleMessageCreate : failure);
+            return messageAction.get().queueAfter(
+                delay,
+                unit,
+                message -> handleSuccessConsumer(message, success),
+                error -> handleFailureConsumer(error, failure)
+            );
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -183,13 +229,19 @@ public abstract class Restable {
      * @param executor The Non-null {@link java.util.concurrent.ScheduledExecutorService ScheduledExecutorService} that should be used
      *                 to schedule this operation
      * @return {@link java.util.concurrent.ScheduledFuture ScheduledFuture}
-     * representing the delayed operation
+     *         representing the delayed operation
      * @throws java.lang.IllegalArgumentException If the provided TimeUnit or ScheduledExecutorService is {@code null}
      */
-    public Future<?> queueAfter(long delay, TimeUnit unit, ScheduledExecutorService executor) {
+    public final Future<?> queueAfter(long delay, TimeUnit unit, ScheduledExecutorService executor) {
         Optional<MessageAction> messageAction = sendMessage();
         if (messageAction.isPresent()) {
-            return messageAction.get().queueAfter(delay, unit, null, RestActionUtil.handleMessageCreate, executor);
+            return messageAction.get().queueAfter(
+                delay,
+                unit,
+                message -> handleSuccessConsumer(message, null),
+                error -> handleFailureConsumer(error, null),
+                executor
+            );
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -212,13 +264,19 @@ public abstract class Restable {
      * @param executor The Non-null {@link java.util.concurrent.ScheduledExecutorService ScheduledExecutorService} that should be used
      *                 to schedule this operation
      * @return {@link java.util.concurrent.ScheduledFuture ScheduledFuture}
-     * representing the delayed operation
+     *         representing the delayed operation
      * @throws java.lang.IllegalArgumentException If the provided TimeUnit or ScheduledExecutorService is {@code null}
      */
-    public Future<?> queueAfter(long delay, TimeUnit unit, Consumer<Message> success, ScheduledExecutorService executor) {
+    public final Future<?> queueAfter(long delay, TimeUnit unit, Consumer<Message> success, ScheduledExecutorService executor) {
         Optional<MessageAction> messageAction = sendMessage();
         if (messageAction.isPresent()) {
-            return messageAction.get().queueAfter(delay, unit, success, RestActionUtil.handleMessageCreate, executor);
+            return messageAction.get().queueAfter(
+                delay,
+                unit,
+                message -> handleSuccessConsumer(message, success),
+                error -> handleFailureConsumer(error, null),
+                executor
+            );
         }
         return CompletableFuture.completedFuture(null);
     }
@@ -240,26 +298,61 @@ public abstract class Restable {
      * @param executor The Non-null {@link ScheduledExecutorService ScheduledExecutorService} that should be used
      *                 to schedule this operation
      * @return {@link java.util.concurrent.ScheduledFuture ScheduledFuture}
-     * representing the delayed operation
+     *         representing the delayed operation
      * @throws java.lang.IllegalArgumentException If the provided TimeUnit or ScheduledExecutorService is {@code null}
      */
-    public Future<?> queueAfter(long delay, TimeUnit unit, Consumer<Message> success, Consumer<Throwable> failure, ScheduledExecutorService executor) {
+    public final Future<?> queueAfter(long delay, TimeUnit unit, Consumer<Message> success, Consumer<Throwable> failure, ScheduledExecutorService executor) {
         Optional<MessageAction> messageAction = sendMessage();
         if (messageAction.isPresent()) {
-            if (failure == null) {
-                failure = RestActionUtil.handleMessageCreate;
-            }
-            return messageAction.get().queueAfter(delay, unit, success, failure, executor);
+            return messageAction.get().queueAfter(
+                delay,
+                unit,
+                message -> handleSuccessConsumer(message, success),
+                error -> handleFailureConsumer(error, failure),
+                executor
+            );
         }
         return CompletableFuture.completedFuture(null);
     }
 
-    private Optional<MessageAction> sendMessage() {
+    /**
+     * Handles the default success for queued REST requests to Discords API.
+     *
+     * @param message The JDA message objected that is returned by the REST request.
+     * @param success The success consumer from the parent call of the queued message.
+     */
+    protected void handleSuccessConsumer(Message message, Consumer<Message> success) {
+        if (success == null) {
+            return;
+        }
+        success.accept(message);
+    }
+
+    /**
+     * Handles the default failure for queued REST requests to Discords API.
+     *
+     * @param error   The error that were thrown to make the request fail.
+     * @param failure The failure consumer from the parent call to the queued message.
+     */
+    protected void handleFailureConsumer(Throwable error, Consumer<? super Throwable> failure) {
+        if (failure == null) {
+            failure = RestActionUtil.handleMessageCreate;
+        }
+        failure.accept(error);
+    }
+
+    /**
+     * Handles sending the message to Discords REST API.
+     *
+     * @return An optional message action with the REST call that is best
+     *         suited for the bots current permission in the set channel.
+     */
+    protected final Optional<MessageAction> sendMessage() {
         if (channel == null) {
-            throw new RuntimeException("Invalid channel given, the channel can not be null!");
+            throw new RuntimeException("Message channel is NULL, can't queue message if the channel is not set!");
         }
 
-        CheckPermissionUtil.PermissionCheckType type = CheckPermissionUtil.canSendMessages(channel);
+        CheckPermissionUtil.PermissionCheckType type = getChannelPermissionType();
         if (type.canSendEmbed()) {
             return Optional.of(channel.sendMessage(buildEmbed()));
         }
@@ -276,5 +369,20 @@ public abstract class Restable {
         return Optional.empty();
     }
 
-    public abstract MessageEmbed buildEmbed();
+    /**
+     * Gets the channel permissions for the for in the channel that is set for
+     * the Restable call, this will help determine if the bot is able to send
+     * embed message, normal messages, or not able to send messages at all.
+     *
+     * @return The permission check types set for the channel used in the Restable call.
+     */
+    protected final CheckPermissionUtil.PermissionCheckType getChannelPermissionType() {
+        if (channelPermissionType == null) {
+            channelPermissionType = channel == null
+                ? CheckPermissionUtil.PermissionCheckType.NONE
+                : CheckPermissionUtil.canSendMessages(channel);
+        }
+
+        return channelPermissionType;
+    }
 }

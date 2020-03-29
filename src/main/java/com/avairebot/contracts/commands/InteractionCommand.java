@@ -22,10 +22,13 @@
 package com.avairebot.contracts.commands;
 
 import com.avairebot.AvaIre;
+import com.avairebot.commands.CommandContainer;
+import com.avairebot.commands.CommandHandler;
 import com.avairebot.commands.CommandMessage;
 import com.avairebot.commands.CommandPriority;
 import com.avairebot.contracts.commands.interactions.Lottery;
 import com.avairebot.language.I18n;
+import com.avairebot.metrics.Metrics;
 import com.avairebot.utilities.CacheUtil;
 import com.avairebot.utilities.MentionableUtil;
 import com.google.common.cache.Cache;
@@ -48,17 +51,28 @@ import java.util.concurrent.TimeUnit;
 
 public abstract class InteractionCommand extends Command {
 
+    /**
+     * The Guava cache instance, used for caching the sent messages, and
+     * helps determine if the response message should be sent or not.
+     *
+     * @see Metrics#setup(AvaIre) Metrics setup.
+     */
     public static final Cache<String, Lottery> cache = CacheBuilder.newBuilder()
         .recordStats()
         .expireAfterAccess(5, TimeUnit.MINUTES)
         .build();
 
+    /**
+     * Creates a new interaction command instance.
+     *
+     * @param avaire The main {@link AvaIre avaire} application instance.
+     */
     public InteractionCommand(AvaIre avaire) {
         super(avaire, false);
     }
 
     @Override
-    public String getDescription(CommandContext context) {
+    public String getDescription(@Nullable CommandContext context) {
         return String.format(
             "Sends the **%s** interaction to the mentioned user.",
             getInteraction(context, true)
@@ -98,12 +112,27 @@ public abstract class InteractionCommand extends Command {
         return CommandPriority.HIGH;
     }
 
+    /**
+     * Gets the colour that should be used for the ebbed message when
+     * he interaction message is sent, by default this will return
+     * {@code NULL} which will not set any colour.
+     *
+     * @return The colour that should be used for the embed message.
+     */
     @Nullable
     @SuppressWarnings("WeakerAccess")
     public Color getInteractionColor() {
         return null;
     }
 
+    /**
+     * Gets the list of interaction images that can be returned by the
+     * interaction, using the image full URL to where it is hosted.
+     * <p>
+     * Example: https://i.imgur.com/ZupgGkI.jpg
+     *
+     * @return A list of interaction images.
+     */
     @Nonnull
     public abstract List<String> getInteractionImages();
 
@@ -170,11 +199,24 @@ public abstract class InteractionCommand extends Command {
         });
     }
 
-    private String getInteraction(CommandContext context, boolean isDescription) {
+    private String getInteraction(@Nullable CommandContext context, boolean isDescription) {
         if (isDescription) {
             return getTriggers().get(0);
         }
-        return context.i18nRaw(context.getI18nCommandPrefix());
+
+        if (context != null) {
+            return context.i18nRaw(context.getI18nCommandPrefix());
+        }
+
+        CommandContainer container = CommandHandler.getCommand(this);
+        if (container == null) {
+            return "Unknown";
+        }
+
+        return I18n.getString(null,
+            container.getCategory().getName().toLowerCase() + "."
+                + container.getCommand().getClass().getSimpleName()
+        );
     }
 
     private String asKey(CommandContext context) {

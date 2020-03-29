@@ -22,9 +22,11 @@
 package com.avairebot.middleware;
 
 import com.avairebot.AvaIre;
+import com.avairebot.commands.CommandMessage;
 import com.avairebot.contracts.middleware.Middleware;
 import com.avairebot.factories.MessageFactory;
 import com.avairebot.permissions.Permissions;
+import com.avairebot.utilities.RestActionUtil;
 import net.dv8tion.jda.core.entities.Message;
 import net.dv8tion.jda.core.entities.Role;
 
@@ -39,7 +41,7 @@ public class HasAnyRoleMiddleware extends Middleware {
     }
 
     @Override
-    public String buildHelpDescription(@Nonnull String[] arguments) {
+    public String buildHelpDescription(@Nonnull CommandMessage context, @Nonnull String[] arguments) {
         if (arguments.length == 1) {
             return String.format("**The `%s` role is required to use this command!**", arguments[0]);
         }
@@ -69,7 +71,7 @@ public class HasAnyRoleMiddleware extends Middleware {
         return runMessageCheck(message, () -> {
             MessageFactory.makeError(message, "You don't have any of the required roles to execute this command:\n`:role`")
                 .set("role", String.join("`, `", args))
-                .queue(newMessage -> newMessage.delete().queueAfter(45, TimeUnit.SECONDS));
+                .queue(newMessage -> newMessage.delete().queueAfter(45, TimeUnit.SECONDS, null, RestActionUtil.ignore));
 
             return false;
         });

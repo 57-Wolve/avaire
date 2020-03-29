@@ -27,6 +27,8 @@ import com.avairebot.database.collection.Collection;
 import com.avairebot.database.collection.DataRow;
 import com.avairebot.metrics.Metrics;
 import com.avairebot.scheduler.tasks.DrainVoteQueueTask;
+import com.avairebot.servlet.routes.GetVote;
+import com.avairebot.servlet.routes.PostVote;
 import com.avairebot.time.Carbon;
 import net.dv8tion.jda.core.entities.Member;
 import net.dv8tion.jda.core.entities.User;
@@ -66,7 +68,11 @@ public class VoteManager {
         }
         Metrics.validVotes.set(0D);
 
-        this.syncWithDatabase();
+        if (isEnabled()) {
+            syncWithDatabase();
+            avaire.getServlet().registerPost("/vote", new PostVote());
+            avaire.getServlet().registerGet("/votes/:ids", new GetVote());
+        }
     }
 
     /**
@@ -105,7 +111,7 @@ public class VoteManager {
 
     /**
      * Adds the given vote entity to the queue if it is not null, doesn't already exists
-     * in the queue, or if the user haven't already voted in the last 24 hours, if the
+     * in the queue, or if the user haven't already voted in the last 12 hours, if the
      * vote entity passes all the checks, a new consume duration time will be set for
      * the entity, allowing the {@link DrainVoteQueueTask drain vote queue task} to
      * determine when a vote entity is ready to be sent to the API.
@@ -131,30 +137,30 @@ public class VoteManager {
     }
 
     /**
-     * Checks if the given member has voted in the last 24 hours.
+     * Checks if the given member has voted in the last 12 hours.
      *
      * @param member The member instance that should be checked.
-     * @return <code>True</code> if the member has voted in the last 24 hours.
+     * @return <code>True</code> if the member has voted in the last 12 hours.
      */
     public boolean hasVoted(@Nullable Member member) {
         return member != null && hasVoted(member.getUser().getIdLong());
     }
 
     /**
-     * Checks if the given user has voted in the last 24 hours.
+     * Checks if the given user has voted in the last 12 hours.
      *
      * @param user The user instance that should be checked.
-     * @return <code>True</code> if the user has voted in the last 24 hours.
+     * @return <code>True</code> if the user has voted in the last 12 hours.
      */
     public boolean hasVoted(@Nullable User user) {
         return user != null && hasVoted(user.getIdLong());
     }
 
     /**
-     * Checks if the user with the given ID has voted in the last 24 hours.
+     * Checks if the user with the given ID has voted in the last 12 hours.
      *
      * @param userId The user ID that should be checked.
-     * @return <code>True</code> if the user has voted in the last 24 hours.
+     * @return <code>True</code> if the user has voted in the last 12 hours.
      */
     public boolean hasVoted(long userId) {
         return !isEnabled() || voteLog.containsKey(userId) && voteLog.get(userId).getCarbon().isFuture();
@@ -206,39 +212,44 @@ public class VoteManager {
      * Registers a new vote for the given member.
      *
      * @param member The member that the vote should be registered for.
+     * @param points The amount of points to reward the user.
      */
-    public void registerVoteFor(@Nullable Member member) {
+    public void registerVoteFor(@Nullable Member member, int points) {
         if (member == null) {
             return;
         }
-        registerVoteFor(member.getUser().getIdLong());
+        registerVoteFor(member.getUser().getIdLong(), points);
     }
 
     /**
      * Registers a new vote for the given user.
      *
-     * @param user The user that the vote should be registered for.
+     * @param user   The user that the vote should be registered for.
+     * @param points The amount of points to reward the user.
      */
-    public void registerVoteFor(@Nullable User user) {
+    public void registerVoteFor(@Nullable User user, int points) {
         if (user == null) {
             return;
         }
-        registerVoteFor(user.getIdLong());
+        registerVoteFor(user.getIdLong(), points);
     }
 
     /**
      * Registers a new vote for the given user ID.
      *
      * @param userId The user ID that the vote should be registered for.
+     * @param points The amount of points to reward the user.
      */
-    public void registerVoteFor(long userId) {
+    public void registerVoteFor(long userId, int points) {
         if (!isEnabled()) {
             return;
         }
 
+        points = Math.max(1, points);
+
         if (!voteLog.containsKey(userId)) {
             voteLog.put(userId, new VoteCacheEntity(
-                userId, Carbon.now().addHours(24)
+                userId, Carbon.now().addHours(12)
             ));
         }
 
@@ -246,16 +257,17 @@ public class VoteManager {
             Collection collection = avaire.getDatabase().newQueryBuilder(Constants.VOTES_TABLE_NAME)
                 .where("user_id", userId).take(1).get();
 
+            int finalPoints = points;
             if (collection.isEmpty()) {
                 avaire.getDatabase().newQueryBuilder(Constants.VOTES_TABLE_NAME)
                     .insert(statement -> {
                         statement.set("user_id", userId);
                         statement.set("expires_in", voteLog.get(userId).getCarbon().toDayDateTimeString());
-                        statement.set("points", 1);
-                        statement.set("points_total", 1);
+                        statement.set("points", finalPoints);
+                        statement.set("points_total", finalPoints);
                     });
 
-                voteLog.get(userId).setVotePoints(1);
+                voteLog.get(userId).setVotePoints(finalPoints);
 
                 return;
             }
@@ -265,13 +277,13 @@ public class VoteManager {
                 .where("user_id", userId)
                 .update(statement -> {
                     statement.set("expires_in", voteLog.get(userId).getCarbon().toDayDateTimeString());
-                    statement.setRaw("points", "`points` + 1");
-                    statement.setRaw("points_total", "`points_total` + 1");
+                    statement.setRaw("points", "`points` + " + finalPoints);
+                    statement.setRaw("points_total", "`points_total` + " + finalPoints);
                 });
 
             VoteCacheEntity voteEntity = voteLog.get(userId);
 
-            voteEntity.setVotePoints(collection.first().getInt("points", 1) + 1);
+            voteEntity.setVotePoints(collection.first().getInt("points", 1) + finalPoints);
             voteEntity.setOptIn(collection.first().getBoolean("opt_in", true));
         } catch (SQLException e) {
             log.error("An SQLException was thrown while updating user vote information: ", e);
@@ -280,13 +292,18 @@ public class VoteManager {
 
     @Nullable
     public VoteCacheEntity getVoteEntity(@Nonnull User user) {
-        if (voteLog.containsKey(user.getIdLong())) {
-            return voteLog.get(user.getIdLong());
+        return getVoteEntity(user.getIdLong());
+    }
+
+    @Nullable
+    public VoteCacheEntity getVoteEntity(long userId) {
+        if (voteLog.containsKey(userId)) {
+            return voteLog.get(userId);
         }
 
         try {
             Collection collection = avaire.getDatabase().newQueryBuilder(Constants.VOTES_TABLE_NAME)
-                .where("user_id", user.getIdLong()).take(1).get();
+                .where("user_id", userId).take(1).get();
 
             if (collection.isEmpty()) {
                 return null;
@@ -318,16 +335,28 @@ public class VoteManager {
      */
     @Nonnull
     public VoteCacheEntity getVoteEntityWithFallback(User user) {
-        VoteCacheEntity voteEntity = getVoteEntity(user);
+        return getVoteEntityWithFallback(user.getIdLong());
+    }
+
+    /**
+     * Gets the vote entity for the given user ID, if no vote entity was found,
+     * a new vote entity will be created for the given user ID.
+     *
+     * @param userId The user ID that the vote cache entity should be retrieved for.
+     * @return The vote cache entity belonging to the given user ID.
+     */
+    @Nonnull
+    public VoteCacheEntity getVoteEntityWithFallback(long userId) {
+        VoteCacheEntity voteEntity = getVoteEntity(userId);
         if (voteEntity != null) {
             return voteEntity;
         }
 
         voteEntity = new VoteCacheEntity(
-            user.getIdLong(), 0, true, Carbon.now().subDay()
+            userId, 0, true, Carbon.now().subDay()
         );
 
-        voteLog.put(user.getIdLong(), voteEntity);
+        voteLog.put(userId, voteEntity);
 
         return voteEntity;
     }

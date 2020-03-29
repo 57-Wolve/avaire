@@ -28,7 +28,6 @@ import com.avairebot.database.transformers.ChannelTransformer;
 import com.avairebot.database.transformers.GuildTransformer;
 import com.avairebot.factories.MessageFactory;
 import com.avairebot.permissions.Permissions;
-import com.avairebot.utilities.RoleUtil;
 import com.avairebot.utilities.StringReplacementUtil;
 import net.dv8tion.jda.core.Permission;
 import net.dv8tion.jda.core.entities.Role;
@@ -95,6 +94,17 @@ public class MemberEventAdapter extends EventAdapter {
             }
         }
 
+        // Re-mutes the user if a valid mute role have been setup for the guild
+        // and the user is still registered as muted for the server.
+        if (transformer.getMuteRole() != null) {
+            Role mutedRole = event.getGuild().getRoleById(transformer.getMuteRole());
+            if (canGiveRole(event, mutedRole) && avaire.getMuteManger().isMuted(event.getGuild().getIdLong(), event.getUser().getIdLong())) {
+                event.getGuild().getController().addRolesToMember(
+                    event.getMember(), mutedRole
+                ).queue();
+            }
+        }
+
         if (event.getUser().isBot()) {
             return;
         }
@@ -154,7 +164,8 @@ public class MemberEventAdapter extends EventAdapter {
 
     private boolean canGiveRole(GuildMemberJoinEvent event, Role role) {
         return role != null
-            && event.getGuild().getSelfMember().hasPermission(Permissions.MANAGE_ROLES.getPermission())
-            && RoleUtil.isRoleHierarchyLower(event.getGuild().getSelfMember().getRoles(), role);
+            && event.getGuild().getSelfMember().canInteract(role)
+            && (event.getGuild().getSelfMember().hasPermission(Permissions.MANAGE_ROLES.getPermission())
+            || event.getGuild().getSelfMember().hasPermission(Permissions.ADMINISTRATOR.getPermission()));
     }
 }

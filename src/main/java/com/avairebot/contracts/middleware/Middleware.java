@@ -22,6 +22,8 @@
 package com.avairebot.contracts.middleware;
 
 import com.avairebot.AvaIre;
+import com.avairebot.commands.CommandMessage;
+import com.avairebot.metrics.Metrics;
 import com.avairebot.middleware.MiddlewareStack;
 import com.avairebot.plugin.JavaPlugin;
 import com.avairebot.utilities.CacheUtil;
@@ -36,6 +38,12 @@ import java.util.concurrent.TimeUnit;
 
 public abstract class Middleware {
 
+    /**
+     * The Guava cache instance, used for caching the sent messages, and
+     * helps determine if the response message should be sent or not.
+     *
+     * @see Metrics#setup(AvaIre) Metrics setup.
+     */
     public static final Cache<Long, Boolean> messageCache = CacheBuilder.newBuilder()
         .recordStats()
         .expireAfterWrite(2500, TimeUnit.MILLISECONDS)
@@ -70,11 +78,12 @@ public abstract class Middleware {
      * for a command that uses the middleware, if null is returned the middleware will
      * be omitted from the help command.
      *
+     * @param context   The command context from when the method was called.
      * @param arguments The arguments that was given to the middleware for the current command.
      * @return Possibly-null, the description of the middleware, or null if no description should be displayed.
      */
     @Nullable
-    public String buildHelpDescription(@Nonnull String[] arguments) {
+    public String buildHelpDescription(@Nonnull CommandMessage context, @Nonnull String[] arguments) {
         return null;
     }
 
@@ -101,7 +110,7 @@ public abstract class Middleware {
      * @param message  The JDA message that invoked the middleware stack.
      * @param callback The callback that should be invoked to send the message to the user.
      * @return The value returned by the callback, or the previous value returned by the callback if
-     * the user has received an error message in the last 2½ seconds.
+     *         the user has received an error message in the last 2½ seconds.
      */
     protected boolean runMessageCheck(@Nonnull Message message, @Nonnull Callable<Boolean> callback) {
         return (boolean) CacheUtil.getUncheckedUnwrapped(messageCache, message.getAuthor().getIdLong(), callback);

@@ -24,6 +24,7 @@ package com.avairebot.audio;
 import com.avairebot.AvaIre;
 import com.avairebot.scheduler.ScheduleHandler;
 import com.avairebot.shared.DiscordConstants;
+import lavalink.client.io.LavalinkSocket;
 import lavalink.client.io.Link;
 import lavalink.client.io.jda.JdaLavalink;
 import lavalink.client.io.jda.JdaLink;
@@ -166,9 +167,9 @@ public class LavalinkManager {
      */
     public void closeConnection(Guild guild) {
         if (isEnabled()) {
-            JdaLink link = lavalink.getLink(guild);
+            JdaLink link = lavalink.getExistingLink(guild);
 
-            if (!isLinkBeingDestroyed(link)) {
+            if (link != null && !isLinkBeingDestroyed(link)) {
                 link.disconnect();
             }
         } else {
@@ -206,12 +207,32 @@ public class LavalinkManager {
      * @param link   The link that should be checked.
      * @param states The list of states that should be compared to the links state.
      * @return <code>True</code> if the links state matches any of the given
-     * states, <code>False</code> otherwise.
+     *         states, <code>False</code> otherwise.
      */
     @SuppressWarnings("WeakerAccess")
     public boolean isLinkInState(JdaLink link, Link.State... states) {
         for (Link.State state : states) {
             if (state != null && state.equals(link.getState())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Checks if Lavalink has at least one connected
+     * node which can be used to stream music.
+     *
+     * @return {@code True} if at least one node is available
+     *         for streaming music, {@code False} otherwise.
+     */
+    public boolean hasConnectedNodes() {
+        if (lavalink.getNodes().isEmpty()) {
+            return false;
+        }
+
+        for (LavalinkSocket socket : lavalink.getNodes()) {
+            if (socket.isOpen()) {
                 return true;
             }
         }

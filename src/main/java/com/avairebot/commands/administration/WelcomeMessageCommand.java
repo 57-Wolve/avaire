@@ -50,7 +50,7 @@ public class WelcomeMessageCommand extends ChannelModuleCommand {
 
     @Override
     public String getDescription() {
-        return "Sets the message that should be sent when a user joins the server, this command can only be used if the welcome module is enabled for the current channel.\nThe welcome message has support for [placeholders](https://avairebot.com/docs/placeholders), allowing for customizing the message a bit more for each user.\nhttps://avairebot.com/docs/placeholders";
+        return "Sets the message that should be sent when a user joins the server, this command can only be used if the welcome module is enabled for the current channel.\nThe welcome message has support for [placeholders](https://github.com/avaire/avaire/wiki/placeholders), allowing for customizing the message a bit more for each user.\nhttps://github.com/avaire/avaire/wiki/placeholders";
     }
 
     @Override
@@ -131,7 +131,7 @@ public class WelcomeMessageCommand extends ChannelModuleCommand {
             }
         }
 
-        channelTransformer.getWelcome().setMessage(args.length == 0 ? null : String.join(" ", args));
+        channelTransformer.getWelcome().setMessage(args.length == 0 ? null : context.getContentRaw());
 
         return updateDatabase(context, guildTransformer, () -> {
             if (channelTransformer.getWelcome().getMessage() == null) {

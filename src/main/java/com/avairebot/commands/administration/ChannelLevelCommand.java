@@ -83,6 +83,7 @@ public class ChannelLevelCommand extends Command {
     @Override
     public List<Class<? extends Command>> getRelations() {
         return Arrays.asList(
+            RoleLevelCommand.class,
             LevelCommand.class,
             LevelHierarchyCommand.class,
             LevelModifierCommand.class,

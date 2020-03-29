@@ -36,16 +36,26 @@ import com.avairebot.database.controllers.PlayerController;
 import com.avairebot.database.transformers.GuildTransformer;
 import com.avairebot.database.transformers.PlayerTransformer;
 import com.avairebot.factories.MessageFactory;
+import com.avairebot.imagegen.RankBackground;
+import com.avairebot.imagegen.RankBackgroundHandler;
+import com.avairebot.imagegen.renders.RankBackgroundRender;
+import com.avairebot.language.I18n;
 import com.avairebot.utilities.CacheUtil;
 import com.avairebot.utilities.MentionableUtil;
 import com.avairebot.utilities.NumberUtil;
 import com.google.common.cache.Cache;
 import com.google.common.cache.CacheBuilder;
+import net.dv8tion.jda.core.EmbedBuilder;
+import net.dv8tion.jda.core.MessageBuilder;
 import net.dv8tion.jda.core.entities.Guild;
 import net.dv8tion.jda.core.entities.User;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
 import java.awt.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -60,6 +70,8 @@ public class RankCommand extends Command {
         .recordStats()
         .expireAfterWrite(120, TimeUnit.SECONDS)
         .build();
+
+    private static final Logger log = LoggerFactory.getLogger(RankCommand.class);
 
     public RankCommand(AvaIre avaire) {
         super(avaire, false);
@@ -92,7 +104,8 @@ public class RankCommand extends Command {
     public List<Class<? extends Command>> getRelations() {
         return Arrays.asList(
             LeaderboardCommand.class,
-            GlobalLeaderboardCommand.class
+            GlobalLeaderboardCommand.class,
+            RankBackgroundCommand.class
         );
     }
 
@@ -158,27 +171,143 @@ public class RankCommand extends Command {
             long nextLevelXp = avaire.getLevelManager().getExperienceFromLevel(guildTransformer, level + 1);
             double percentage = ((double) (experience - current) / (nextLevelXp - current)) * 100;
 
-            String levelBar = "";
+            StringBuilder levelBarBuilder = new StringBuilder();
             for (int i = 1; i <= 40; i++) {
-                levelBar += ((i * 2.5) < percentage) ? "\u2592" : "\u2591";
+                levelBarBuilder.append(((i * 2.5) < percentage) ? "\u2592" : "\u2591");
+            }
+            String levelBar = levelBarBuilder.toString();
+
+            PlayerTransformer playerTransformer = PlayerController.fetchPlayer(avaire, context.getMessage(), author);
+            if (playerTransformer != null) {
+                Integer selectedBackgroundId = playerTransformer.getPurchases()
+                    .getSelectedPurchasesForType(
+                        RankBackgroundHandler.getPurchaseType()
+                    );
+
+                if (selectedBackgroundId != null) {
+                    sendBackgroundMessage(
+                        context, author,
+                        score, levelBar,
+                        level, nextLevelXp,
+                        experience, zeroExperience,
+                        percentage,
+                        properties,
+                        selectedBackgroundId
+                    );
+                    return;
+                }
             }
 
-            MessageFactory.makeEmbeddedMessage(context.getChannel(), Color.decode("#E91E63"))
-                .setAuthor(author.getName(), "https://avairebot.com/leaderboard/" + context.getGuild().getId(), author.getEffectiveAvatarUrl())
-                .setFooter("https://avairebot.com/leaderboard/" + context.getGuild().getId())
-                .addField(context.i18n("fields.rank"), score, true)
-                .addField(context.i18n("fields.level"), NumberUtil.formatNicely(level), true)
-                .addField(context.i18n("fields.experience"), (experience - zeroExperience - 100 < 0 ? "0" : context.i18n("fields.total",
-                    NumberUtil.formatNicely(experience - zeroExperience - 100), NumberUtil.formatNicely(properties.getTotal())
-                )), true)
-                .addField(context.i18n("fields.experienceToNext"), context.i18n("fields.youNeedMoreXpToLevelUp",
-                    levelBar, NumberUtil.formatNicelyWithDecimals(percentage), '%', NumberUtil.formatNicely(nextLevelXp - experience)
-                ), false)
-                .requestedBy(context.getMember())
-                .queue();
+            sendEmbeddedMessage(
+                context, author,
+                score, levelBar,
+                level, nextLevelXp,
+                experience, zeroExperience,
+                percentage,
+                properties
+            );
         });
 
         return true;
+    }
+
+    private void sendEmbeddedMessage(
+        CommandMessage context,
+        User author,
+        String score,
+        String levelBar,
+        long level,
+        long nextLevelXp,
+        long experience,
+        long zeroExperience,
+        double percentage,
+        DatabaseProperties properties
+    ) {
+        MessageFactory.makeEmbeddedMessage(context.getChannel(), Color.decode("#E91E63"))
+            .setAuthor(author.getName(), "https://avairebot.com/leaderboard/" + context.getGuild().getId(), author.getEffectiveAvatarUrl())
+            .setFooter("https://avairebot.com/leaderboard/" + context.getGuild().getId())
+            .addField(context.i18n("fields.rank"), score, true)
+            .addField(context.i18n("fields.level"), NumberUtil.formatNicely(level), true)
+            .addField(context.i18n("fields.experience"), (experience - zeroExperience - 100 < 0 ? "0" : context.i18n("fields.total",
+                NumberUtil.formatNicely(experience - zeroExperience - 100), NumberUtil.formatNicely(properties.getTotal())
+            )), true)
+            .addField(context.i18n("fields.experienceToNext"), context.i18n("fields.youNeedMoreXpToLevelUp",
+                levelBar, NumberUtil.formatNicelyWithDecimals(percentage), '%', NumberUtil.formatNicely(nextLevelXp - experience)
+            ), false)
+            .requestedBy(context.getMember())
+            .queue();
+    }
+
+    private void sendBackgroundMessage(
+        CommandMessage context,
+        User author,
+        String score,
+        String levelBar,
+        long level,
+        long nextLevelXp,
+        long experience,
+        long zeroExperience,
+        double percentage,
+        DatabaseProperties properties,
+        int backgroundId
+    ) {
+        RankBackground background = RankBackgroundHandler.getInstance().fromId(backgroundId);
+        if (background == null) {
+            sendEmbeddedMessage(
+                context, author,
+                score, levelBar,
+                level, nextLevelXp,
+                experience, zeroExperience,
+                percentage,
+                properties
+            );
+            return;
+        }
+
+        long xpForCurrentLevel = avaire.getLevelManager().getExperienceFromLevel(
+            context.getGuildTransformer(), level
+        );
+
+        RankBackgroundRender render = new RankBackgroundRender(author)
+            .setBackground(background)
+            .setCurrentXpInLevel(NumberUtil.formatNicely(experience - xpForCurrentLevel))
+            .setTotalXpInLevel(NumberUtil.formatNicely(nextLevelXp - xpForCurrentLevel))
+            .setGlobalExperience(NumberUtil.formatNicely(properties.getTotal()))
+            .setServerExperience(NumberUtil.formatNicely(experience - zeroExperience - 100))
+            .setLevel(NumberUtil.formatNicely(level))
+            .setRank(properties.getScore().equalsIgnoreCase("Unranked") ? "???" : properties.getScore())
+            .setPercentage(percentage);
+
+        String attachmentName = I18n.format(
+            "{0}-{1}-rank-bg.png",
+            context.getGuild().getIdLong(),
+            author.getId()
+        );
+
+        MessageBuilder message = new MessageBuilder();
+        EmbedBuilder embed = new EmbedBuilder()
+            .setImage("attachment://" + attachmentName)
+            .setColor(background.getBackgroundColors().getExperienceForegroundColor());
+        message.setEmbed(embed.build());
+
+        try {
+            //noinspection ConstantConditions
+            context.getMessageChannel().sendFile(
+                new ByteArrayInputStream(render.renderToBytes()),
+                attachmentName, message.build()
+            ).queue();
+        } catch (IOException e) {
+            log.error("Failed to generate the rank background: {}", e.getMessage(), e);
+
+            sendEmbeddedMessage(
+                context, author,
+                score, levelBar,
+                level, nextLevelXp,
+                experience, zeroExperience,
+                percentage,
+                properties
+            );
+        }
     }
 
     private CompletableFuture<DatabaseProperties> loadProperties(CommandMessage context, User author) {
@@ -188,15 +317,16 @@ public class RankCommand extends Command {
                     ? context.getPlayerTransformer() : PlayerController.fetchPlayer(avaire, context.getMessage(), author);
 
                 DataRow data = avaire.getDatabase().newQueryBuilder(Constants.PLAYER_EXPERIENCE_TABLE_NAME)
-                    .selectRaw("sum(`experience`) - (count(`user_id`) * 100) as `total`")
+                    .selectRaw("sum(`global_experience`) - (count(`user_id`) * 100) as `total`")
                     .where("user_id", author.getId())
+                    .where("active", 1)
                     .get().first();
 
                 long total = data == null ? (player == null ? 0 : player.getExperience()) : data.getLong("total");
 
                 return new DatabaseProperties(player, total, getScore(context, author.getId()));
             } catch (SQLException e) {
-                e.printStackTrace();
+                log.error("Error getting player experience : {}", e.getMessage(), e);
                 return null;
             }
         });
@@ -208,6 +338,7 @@ public class RankCommand extends Command {
                 .select("user_id as id")
                 .orderBy("experience", "desc")
                 .where("guild_id", context.getGuild().getId())
+                .where("active", 1)
                 .get()
         );
 

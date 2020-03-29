@@ -1,5 +1,32 @@
 <p align="center">
-    <img src="https://avairebot.com/assets/img/banner-simple.png">
+    <img src="https://cdn.avairebot.com/image/simple-banner.png">
+</p>
+
+<p align="center">
+    <a href="https://ci.avairebot.com/">
+        <img alt="TeamCity Simple Build Status" src="https://img.shields.io/teamcity/build/s/Avaire_Build?server=http%3A%2F%2Fci.avairebot.com%2F">
+    </a>
+    <a href="https://avairebot.com/">
+        <img src="https://cdn.avairebot.com/badge/avaire-version.svg" alt="AvaIre Version">
+    </a>
+    <a href="https://avairebot.com/">
+        <img src="https://cdn.avairebot.com/badge/avaire-coverage.svg" alt="AvaIre Code Coverage">
+    </a>
+    <a href="https://avairebot.com/support">
+        <img src="https://img.shields.io/discord/284083636368834561.svg" alt="Discord">
+    </a>
+    <a href="https://www.gnu.org/licenses/gpl-3.0.en.html">
+        <img src="https://img.shields.io/github/license/avaire/avaire.svg" alt="GitHub" >
+    </a>
+</p>
+
+<p align="center">
+    <a href="https://discordbots.org/bot/275270122082533378">
+        <img src="https://discordbots.org/api/widget/servers/275270122082533378.svg?noavatar=true" alt="AvaIre">
+    </a>
+    <a href="https://discordbots.org/bot/275270122082533378">
+        <img src="https://discordbots.org/api/widget/upvotes/275270122082533378.svg?noavatar=true" alt="AvaIre">
+    </a>
 </p>
 
 ## About AvaIre
@@ -18,7 +45,7 @@ AvaIre is a multipurpose Discord bot made for fun, written in Java 8, using the 
     - Change the languages Ava uses
     - Create custom aliases for existing commands
     - Change the prefix ava uses on a per-module basis
-- And more, check the [full command reference](https://avairebot.com/docs/master/commands) for all the commands!
+- And more, check the [full command reference](https://avairebot.com/commands) for all the commands!
 
 Visit our [website](https://avairebot.com/) for more information.
 
@@ -27,11 +54,11 @@ You can deploy in a simple way to Heroku using the button below.
 
 [![Deploy to Heroku](https://www.herokucdn.com/deploy/button.png)](https://heroku.com/deploy)
 
-Before deploying, read [the configuration guide](https://avairebot.com/docs/master/configuration/), aswell as [the guide](https://avairebot.com/docs/master/heroku-guide) regarding hosting with Heroku.
+Before deploying, read [the configuration guide](https://github.com/avaire/avaire/wiki/configuration), aswell as [the guide](https://github.com/avaire/avaire/wiki/heroku-guide) regarding hosting with Heroku.
 
 ## Contributing
 
-Thank you for considering contributing to AvaIre! The contribution guide can be found in the [AvaIre documentation](https://avairebot.com/docs/contributions).
+Thank you for considering contributing to AvaIre! The contribution guide can be found in the [AvaIre documentation](https://github.com/avaire/avaire/wiki/contribution-guide).
 
 ## License
 
@@ -60,12 +87,6 @@ AvaIre relies on the following projects:
 ---
 
 <p align="center">
-  <a href="https://discord.gg/gt2FWER"><img src="https://discordapp.com/api/guilds/284083636368834561/widget.png?style=banner2" alt="Discord server"></a>
-  <br>AvaIre support server: https://discord.gg/gt2FWER
-</p>
-
----
-
-<p align="center">
-    "Discord", "Discord App", and any associated logos are registered trademarks of Hammer & Chisel, inc.
+  <a href="https://avairebot.com/support"><img src="https://discordapp.com/api/guilds/284083636368834561/widget.png?style=banner2" alt="Discord server"></a>
+  <br>AvaIre support server: https://avairebot.com/support
 </p>

@@ -21,7 +21,6 @@
 
 package com.avairebot.contracts.database;
 
-import com.avairebot.AvaIre;
 import com.avairebot.contracts.database.grammar.AlterGrammar;
 import com.avairebot.contracts.database.grammar.Grammarable;
 import com.avairebot.contracts.database.grammar.TableGrammar;
@@ -29,7 +28,11 @@ import com.avairebot.database.DatabaseManager;
 import com.avairebot.database.query.QueryBuilder;
 import com.avairebot.database.schema.Blueprint;
 import com.avairebot.metrics.Metrics;
+import com.mysql.jdbc.exceptions.jdbc4.MySQLNonTransientConnectionException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import javax.annotation.WillClose;
 import javax.annotation.WillCloseWhenClosed;
 import javax.annotation.WillNotClose;
@@ -41,6 +44,12 @@ import java.util.Map;
 
 public abstract class Database implements DatabaseConnection, Grammarable {
 
+    private static final Logger log = LoggerFactory.getLogger(Database.class);
+
+    /**
+     * The main database manage instance, used to communicate
+     * with the rest of the application.
+     */
     protected DatabaseManager dbm = null;
 
     /**
@@ -75,7 +84,7 @@ public abstract class Database implements DatabaseConnection, Grammarable {
      *
      * @param dbm The database manager class instance.
      */
-    public void setDatabaseManager(DatabaseManager dbm) {
+    public Database(DatabaseManager dbm) {
         this.dbm = dbm;
 
         lastState = false;
@@ -87,7 +96,7 @@ public abstract class Database implements DatabaseConnection, Grammarable {
      * called by the open method if it's necessary.
      *
      * @return either (1) <code>TRUE</code> if the initialization didn't throw any errors or exceptions
-     * or (2) <code>FALSE</code> if something happened during the initialization
+     *         or (2) <code>FALSE</code> if something happened during the initialization
      */
     protected abstract boolean initialize();
 
@@ -105,10 +114,20 @@ public abstract class Database implements DatabaseConnection, Grammarable {
     protected abstract void queryValidation(StatementInterface paramStatement) throws SQLException;
 
     /**
+     * Prepares the given string value to be used as a value for queries,
+     * this is useful for formatting a string so it's safe for queries
+     * when prepared statements might not be an option.
+     *
+     * @param str The string that should be prepared.
+     * @return The fully formatted queryable string.
+     */
+    public abstract String prepareDataValueString(String str);
+
+    /**
      * Attempts to close the database connection.
      *
      * @return either (1) <code>TRUE</code> if the database connection was closed successfully
-     * or (2) <code>FALSE</code> if the connection is already close, or an exception was thrown
+     *         or (2) <code>FALSE</code> if the connection is already close, or an exception was thrown
      * @throws SQLException if a database access error occurs,
      *                      this method is called on a closed <code>Statement</code>, the given
      *                      SQL statement produces anything other than a single
@@ -117,17 +136,18 @@ public abstract class Database implements DatabaseConnection, Grammarable {
      */
     public final boolean close() throws SQLException {
         if (connection == null) {
-            AvaIre.getLogger().warn("Database - Could not close connection, it is null.");
+            log.warn("Could not close connection, it is null.");
             return false;
         }
 
         try {
             connection.close();
             lastState = false;
+            lastChecked = 0L;
 
             return true;
         } catch (SQLException e) {
-            AvaIre.getLogger().warn("Database - Could not close connection, SQLException: " + e.getMessage());
+            log.warn("Could not close connection, SQLException: " + e.getMessage(), e);
         }
         return false;
     }
@@ -156,10 +176,10 @@ public abstract class Database implements DatabaseConnection, Grammarable {
      * Checks to see if the database connection is still valid.
      *
      * @return either (1) <code>TRUE</code> if the database connection is open and valid
-     * or (2) <code>FALSE</code> if the database connection is closed
+     *         or (2) <code>FALSE</code> if the database connection is closed
      */
     public final boolean isOpen() {
-        return isOpen(1);
+        return isOpen(2);
     }
 
     /**
@@ -167,21 +187,29 @@ public abstract class Database implements DatabaseConnection, Grammarable {
      *
      * @param seconds The amount of time to wait for the connection for.
      * @return either (1) <code>TRUE</code> if the database connection is open and valid
-     * or (2) <code>FALSE</code> if the database connection is closed
+     *         or (2) <code>FALSE</code> if the database connection is closed
      */
     public final synchronized boolean isOpen(int seconds) {
         if (connection != null) {
             // Returns the last state if the connection was checked less than three seconds ago.
-            if (System.currentTimeMillis() - 3000 < lastChecked) {
+            if (System.currentTimeMillis() - 5000 < lastChecked) {
                 return lastState;
             }
 
             try {
+                if (connection.isClosed()) {
+                    return false;
+                }
+
                 lastState = connection.isValid(seconds);
-                lastChecked = lastState ? System.currentTimeMillis() : 0L;
+                lastChecked = System.currentTimeMillis() - (lastState ? 0L : 250L);
 
                 return lastState;
-            } catch (SQLException ignored) {
+            } catch (SQLException e) {
+                if (e instanceof MySQLNonTransientConnectionException) {
+                    log.warn("Failed to check if the database connection is open due to a non transient connection exception!", e);
+                }
+                // If the exception type is anything else, we just ignore it.
             }
         }
 
@@ -194,21 +222,24 @@ public abstract class Database implements DatabaseConnection, Grammarable {
      *
      * @param query The query to run.
      * @return the current result as a <code>ResultSet</code> object or
-     * <code>null</code> if the result is an update count or there are no more results
+     *         <code>null</code> if the result is an update count or there are no more results
      * @throws SQLException if a database access error occurs or this method is called on a
      *                      closed <code>Statement</code>
      */
+    @Nullable
     @WillCloseWhenClosed
     public final ResultSet query(String query) throws SQLException {
-        queryValidation(getStatement(query));
+        return handleQuery(() -> {
+            queryValidation(getStatement(query));
 
-        Statement statement = createPreparedStatement(query);
-        statement.closeOnCompletion();
+            Statement statement = createPreparedStatement(query);
+            statement.closeOnCompletion();
 
-        if (statement.execute(query)) {
-            return statement.getResultSet();
-        }
-        throw new SQLException("The query failed to execute successfully: " + query);
+            if (statement.execute(query)) {
+                return statement.getResultSet();
+            }
+            throw new SQLException("The query failed to execute successfully: " + query);
+        });
     }
 
     /**
@@ -217,10 +248,11 @@ public abstract class Database implements DatabaseConnection, Grammarable {
      *
      * @param query The query to run.
      * @return the current result as a <code>ResultSet</code> object or
-     * <code>null</code> if the result is an update count or there are no more results
+     *         <code>null</code> if the result is an update count or there are no more results
      * @throws SQLException if a database access error occurs or this method is called on a
      *                      closed <code>Statement</code>
      */
+    @Nullable
     @WillCloseWhenClosed
     public final ResultSet query(QueryBuilder query) throws SQLException {
         return query(query.toSQL());
@@ -231,10 +263,11 @@ public abstract class Database implements DatabaseConnection, Grammarable {
      *
      * @param query The prepared statement to run.
      * @return the current result as a <code>ResultSet</code> object or
-     * <code>null</code> if the result is an update count or there are no more results
+     *         <code>null</code> if the result is an update count or there are no more results
      * @throws SQLException if a database access error occurs or this method is called on a
      *                      closed <code>Statement</code>
      */
+    @Nullable
     @WillNotClose
     public final ResultSet query(PreparedStatement query) throws SQLException {
         ResultSet output = query(query, preparedStatements.get(query));
@@ -250,26 +283,28 @@ public abstract class Database implements DatabaseConnection, Grammarable {
      * @param query     The prepared statement to run.
      * @param statement The query statement.
      * @return the current result as a <code>ResultSet</code> object or
-     * <code>null</code> if the result is an update count or there are no more results
+     *         <code>null</code> if the result is an update count or there are no more results
      * @throws SQLException if a database access error occurs or this method is called on a
      *                      closed <code>Statement</code>
      */
+    @Nullable
     @WillNotClose
     public final ResultSet query(PreparedStatement query, StatementInterface statement) throws SQLException {
-        queryValidation(statement);
+        return handleQuery(() -> {
+            queryValidation(statement);
 
-        if (query.execute()) {
-            return query.getResultSet();
-        }
-        throw new SQLException("The query failed to execute successfully: " + query);
+            if (query.execute()) {
+                return query.getResultSet();
+            }
+            throw new SQLException("The query failed to execute successfully: " + query);
+        });
     }
 
     /**
      * Prepares a query as a prepared statement before executing it.
      *
      * @param query The query to prepare.
-     * @return the current result as a <code>ResultSet</code> object or
-     * <code>null</code> if the result is an update count or there are no more results
+     * @return The JDBC prepared statement object for the given query.
      * @throws SQLException if a database access error occurs or this method is called on a
      *                      closed <code>Statement</code>
      */
@@ -350,6 +385,23 @@ public abstract class Database implements DatabaseConnection, Grammarable {
         }
 
         return keys;
+    }
+
+    @Nullable
+    private ResultSet handleQuery(SupplierWithSQL<ResultSet> callback) throws SQLException {
+        try {
+            return callback.get();
+        } catch (MySQLNonTransientConnectionException e) {
+            if (e.getMessage().contains("connection closed")) {
+                log.error("Attempted to run a query after the connection was closed, closing and re-opening the connection.", e);
+
+                // The connection should already be closed, we're just forcefully close the
+                // connection here so that the database manage can see that connection is
+                // closed, and so the connection can be reopened on the next request.
+                close();
+            }
+            return null;
+        }
     }
 
     protected Statement createPreparedStatement(String query) throws SQLException {

@@ -67,7 +67,7 @@ public abstract class AudioEventWrapper extends EvalAudioEventWrapper {
      * The music queue, the queue holds all the audio
      * tracks that has been requested by users.
      */
-    protected final BlockingQueue<AudioTrackContainer> queue;
+    protected final BlockingDeque<AudioTrackContainer> queue;
 
     /**
      * Creates a new audio event wrapper instance.
@@ -80,7 +80,7 @@ public abstract class AudioEventWrapper extends EvalAudioEventWrapper {
         this.manager = manager;
         this.player = player;
 
-        this.queue = new LinkedBlockingQueue<>();
+        this.queue = new LinkedBlockingDeque<>();
     }
 
     /**
@@ -88,7 +88,7 @@ public abstract class AudioEventWrapper extends EvalAudioEventWrapper {
      *
      * @return The audio queue.
      */
-    public final BlockingQueue<AudioTrackContainer> getQueue() {
+    public final BlockingDeque<AudioTrackContainer> getQueue() {
         return queue;
     }
 
@@ -98,7 +98,7 @@ public abstract class AudioEventWrapper extends EvalAudioEventWrapper {
      *
      * @param state The link state that should be checked.
      * @return <code>True</code> if the given link is destroyed or
-     * being destroyed, <code>False</code> otherwise.
+     *         being destroyed, <code>False</code> otherwise.
      */
     protected boolean isNodeStateDestroyed(Link.State state) {
         return !state.equals(Link.State.DESTROYED) && !state.equals(Link.State.DESTROYING);
@@ -129,6 +129,11 @@ public abstract class AudioEventWrapper extends EvalAudioEventWrapper {
 
         manager.getAvaire().getEventEmitter().push(nowPlayingEvent);
 
+        final boolean repeatSingle = manager.getRepeatState().equals(GuildMusicManager.RepeatState.SINGLE);
+        if (repeatSingle && container.hasMetadataKey("has-sent-now-playing")) {
+            return;
+        }
+
         if (manager.getGuildTransformer().isMusicMessages()) {
             manager.getLastActiveMessage().makeSuccess(
                 manager.getLastActiveMessage().i18nRaw("music.internal.nowPlaying")
@@ -138,7 +143,11 @@ public abstract class AudioEventWrapper extends EvalAudioEventWrapper {
                 .set("duration", container.getFormattedDuration())
                 .set("requester", container.getRequester().getAsMention())
                 .set("volume", getVolume())
-                .queue();
+                .queue(ignoreSuccess -> {
+                    if (repeatSingle) {
+                        container.setMetadata("has-sent-now-playing", true);
+                    }
+                });
         }
     }
 

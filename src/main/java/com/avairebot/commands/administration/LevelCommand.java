@@ -62,10 +62,12 @@ public class LevelCommand extends Command {
     public List<Class<? extends Command>> getRelations() {
         return Arrays.asList(
             ChannelLevelCommand.class,
+            RoleLevelCommand.class,
             LevelHierarchyCommand.class,
             LevelModifierCommand.class,
             LevelAlertsCommand.class,
-            RankCommand.class
+            RankCommand.class,
+            AdministrateExperienceCommand.class
         );
     }
 

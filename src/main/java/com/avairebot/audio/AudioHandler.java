@@ -22,35 +22,28 @@
 package com.avairebot.audio;
 
 import com.avairebot.AvaIre;
-import com.avairebot.audio.source.PlaylistImportSourceManager;
+import com.avairebot.audio.seracher.SearchProvider;
 import com.avairebot.commands.CommandMessage;
 import com.avairebot.database.controllers.GuildController;
 import com.avairebot.database.transformers.GuildTransformer;
 import com.avairebot.permissions.Permissions;
 import com.avairebot.utilities.RestActionUtil;
+import com.avairebot.utilities.RoleUtil;
 import com.sedmelluq.discord.lavaplayer.player.AudioConfiguration;
 import com.sedmelluq.discord.lavaplayer.player.AudioPlayerManager;
-import com.sedmelluq.discord.lavaplayer.player.DefaultAudioPlayerManager;
 import com.sedmelluq.discord.lavaplayer.source.AudioSourceManagers;
-import com.sedmelluq.discord.lavaplayer.source.bandcamp.BandcampAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.beam.BeamAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.http.HttpAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.local.LocalAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.soundcloud.SoundCloudAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.twitch.TwitchStreamAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.vimeo.VimeoAudioSourceManager;
-import com.sedmelluq.discord.lavaplayer.source.youtube.YoutubeAudioSourceManager;
 import com.sedmelluq.discord.lavaplayer.track.AudioPlaylist;
 import com.sedmelluq.discord.lavaplayer.track.AudioTrack;
 import lavalink.client.io.Link;
 import net.dv8tion.jda.core.Permission;
 import net.dv8tion.jda.core.entities.*;
 import net.dv8tion.jda.core.managers.AudioManager;
-import org.apache.http.client.config.CookieSpecs;
-import org.apache.http.client.config.RequestConfig;
 
 import javax.annotation.CheckReturnValue;
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -83,7 +76,7 @@ public class AudioHandler {
 
     public AudioPlayerManager getPlayerManager() {
         if (playerManager == null) {
-            playerManager = registerSourceManagers(new DefaultAudioPlayerManager());
+            playerManager = new AudioPlayerManagerConfiguration(avaire).get();
 
             playerManager.getConfiguration().setResamplingQuality(
                 AudioConfiguration.ResamplingQuality.valueOf(
@@ -109,29 +102,9 @@ public class AudioHandler {
         return playerManager;
     }
 
-    public AudioPlayerManager registerSourceManagers(AudioPlayerManager manager) {
-        manager.registerSourceManager(new PlaylistImportSourceManager());
-
-        YoutubeAudioSourceManager youtubeAudioSourceManager = new YoutubeAudioSourceManager();
-        youtubeAudioSourceManager.configureRequests(config -> RequestConfig.copy(config)
-            .setCookieSpec(CookieSpecs.IGNORE_COOKIES)
-            .build());
-
-        manager.registerSourceManager(youtubeAudioSourceManager);
-        manager.registerSourceManager(new SoundCloudAudioSourceManager());
-        manager.registerSourceManager(new TwitchStreamAudioSourceManager());
-        manager.registerSourceManager(new BandcampAudioSourceManager());
-        manager.registerSourceManager(new VimeoAudioSourceManager());
-        manager.registerSourceManager(new BeamAudioSourceManager());
-        manager.registerSourceManager(new LocalAudioSourceManager());
-        manager.registerSourceManager(new HttpAudioSourceManager());
-
-        return manager;
-    }
-
     @CheckReturnValue
-    public TrackRequest loadAndPlay(CommandMessage context, @Nonnull String trackUrl) {
-        return new TrackRequest(getGuildAudioPlayer(context.getGuild()), context, trackUrl);
+    public TrackRequest loadAndPlay(CommandMessage context, @Nonnull TrackRequestContext trackContext) {
+        return new TrackRequest(getGuildAudioPlayer(context.getGuild()), context, trackContext);
     }
 
     public void skipTrack(CommandMessage context) {
@@ -167,6 +140,30 @@ public class AudioHandler {
     }
 
     @CheckReturnValue
+    public TrackRequestContext createTrackRequestContext(@Nullable User requester, String[] args) {
+        String string = String.join(" ", args);
+
+        if (string.startsWith("scsearch:")) {
+            return new TrackRequestContext(string.substring(9, string.length()).trim(), SearchProvider.SOUNDCLOUD);
+        }
+
+        if (string.startsWith("local:")) {
+            string = string.substring(6, string.length()).trim();
+            if (requester != null && avaire.getBotAdmins().getUserById(requester.getIdLong()).isAdmin()) {
+                return new TrackRequestContext(string.substring(6, string.length()).trim(), SearchProvider.LOCAL);
+            }
+        }
+
+        try {
+            new URL(string);
+
+            return new TrackRequestContext(string.trim(), SearchProvider.URL);
+        } catch (MalformedURLException ex) {
+            return new TrackRequestContext(string.trim(), SearchProvider.YOUTUBE);
+        }
+    }
+
+    @CheckReturnValue
     public VoiceConnectStatus connectToVoiceChannel(CommandMessage context) {
         return connectToVoiceChannel(context, false);
     }
@@ -195,6 +192,10 @@ public class AudioHandler {
         }
 
         if (LavalinkManager.LavalinkManagerHolder.lavalink.isEnabled()) {
+            if (!LavalinkManager.LavalinkManagerHolder.lavalink.hasConnectedNodes()) {
+                return VoiceConnectStatus.NO_AVAILABLE_NODES;
+            }
+
             VoiceConnectStatus voiceConnectStatus = canConnectToChannel(message, channel);
             if (voiceConnectStatus != null) {
                 return voiceConnectStatus;
@@ -224,6 +225,12 @@ public class AudioHandler {
 
     @CheckReturnValue
     public VoiceConnectStatus connectToVoiceChannel(Message message, VoiceChannel channel, AudioManager audioManager) {
+        if (LavalinkManager.LavalinkManagerHolder.lavalink.isEnabled()) {
+            if (!LavalinkManager.LavalinkManagerHolder.lavalink.hasConnectedNodes()) {
+                return VoiceConnectStatus.NO_AVAILABLE_NODES;
+            }
+        }
+
         VoiceConnectStatus voiceConnectStatus = canConnectToChannel(message, channel);
         if (voiceConnectStatus != null) {
             return voiceConnectStatus;
@@ -354,16 +361,23 @@ public class AudioHandler {
                 return true;
 
             case NONE:
-                return hasDJRole(message);
+                return hasDJRole(transformer, message);
 
             default:
-                return hasDJRole(message) || level.getLevel() < guildLevel.getLevel();
+                return hasDJRole(transformer, message) || level.getLevel() < guildLevel.getLevel();
         }
     }
 
-    private boolean hasDJRole(Message message) {
+    private boolean hasDJRole(GuildTransformer transformer, Message message) {
         if (message.getMember().hasPermission(Permissions.ADMINISTRATOR.getPermission())) {
             return true;
+        }
+
+        if (transformer.getDjRole() != null) {
+            Role role = message.getGuild().getRoleById(transformer.getDjRole());
+            if (role != null) {
+                return RoleUtil.hasRole(message.getMember(), role);
+            }
         }
 
         for (Role role : message.getMember().getRoles()) {

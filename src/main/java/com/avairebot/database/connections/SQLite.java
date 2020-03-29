@@ -29,6 +29,7 @@ import com.avairebot.database.exceptions.DatabaseException;
 import com.avairebot.database.grammar.sqlite.*;
 import com.avairebot.database.query.QueryBuilder;
 import com.avairebot.database.schema.Blueprint;
+import com.avairebot.language.I18n;
 import com.avairebot.metrics.Metrics;
 
 import javax.annotation.Nonnull;
@@ -54,6 +55,8 @@ public class SQLite extends FilenameDatabase {
      * @param filename The filename of the database.
      */
     public SQLite(DatabaseManager dbm, String filename) {
+        super(dbm);
+
         if (filename.equals(":memory:")) {
             this.setFilename(null);
             return;
@@ -99,6 +102,18 @@ public class SQLite extends FilenameDatabase {
     @Override
     protected void queryValidation(StatementInterface paramStatement) throws SQLException {
         // This does nothing for SQLite
+    }
+
+    @Override
+    public String prepareDataValueString(String str) {
+        return I18n.format("'{0}'", str
+            .replaceAll("\\\\", "\\\\\\\\\\\\")
+            .replaceAll("\\n", "\\\\\\\\n")
+            .replaceAll("\\r", "\\\\\\\\r")
+            .replaceAll("\\t", "\\\\\\\\t")
+            .replaceAll("\\00", "\\\\\\\\00")
+            .replaceAll("'", "''")
+        );
     }
 
     @Override
@@ -171,22 +186,27 @@ public class SQLite extends FilenameDatabase {
         return statement;
     }
 
+    @Override
     public String select(DatabaseManager manager, QueryBuilder query, Map<String, Boolean> options) {
         return setupAndRun(new Select(), query, manager, options);
     }
 
+    @Override
     public String create(DatabaseManager manager, Blueprint blueprint, @Nonnull Map<String, Boolean> options) {
         return setupAndRun(new Create(), blueprint, manager, options);
     }
 
+    @Override
     public String delete(DatabaseManager manager, QueryBuilder query, Map<String, Boolean> options) {
         return setupAndRun(new Delete(), query, manager, options);
     }
 
+    @Override
     public String insert(DatabaseManager manager, QueryBuilder query, Map<String, Boolean> options) {
         return setupAndRun(new Insert(), query, manager, options);
     }
 
+    @Override
     public String update(DatabaseManager manager, QueryBuilder query, Map<String, Boolean> options) {
         return setupAndRun(new Update(), query, manager, options);
     }

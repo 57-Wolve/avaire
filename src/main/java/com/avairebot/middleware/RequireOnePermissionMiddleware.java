@@ -22,12 +22,14 @@
 package com.avairebot.middleware;
 
 import com.avairebot.AvaIre;
+import com.avairebot.commands.CommandMessage;
 import com.avairebot.contracts.middleware.Middleware;
 import com.avairebot.factories.MessageFactory;
 import com.avairebot.middleware.permission.PermissionCheck;
 import com.avairebot.middleware.permission.PermissionCommon;
 import com.avairebot.middleware.permission.PermissionType;
 import com.avairebot.permissions.Permissions;
+import com.avairebot.utilities.RestActionUtil;
 import net.dv8tion.jda.core.Permission;
 import net.dv8tion.jda.core.entities.Message;
 
@@ -43,7 +45,7 @@ public class RequireOnePermissionMiddleware extends Middleware {
     }
 
     @Override
-    public String buildHelpDescription(@Nonnull String[] arguments) {
+    public String buildHelpDescription(@Nonnull CommandMessage context, @Nonnull String[] arguments) {
         PermissionType type = PermissionType.fromName(arguments[0]);
         arguments = Arrays.copyOfRange(arguments, 1, arguments.length);
 
@@ -85,7 +87,7 @@ public class RequireOnePermissionMiddleware extends Middleware {
                         .map(Permissions::getPermission)
                         .map(Permission::getName)
                         .collect(Collectors.joining("`, `"))
-                    ).queue(newMessage -> newMessage.delete().queueAfter(90, TimeUnit.SECONDS));
+                    ).queue(newMessage -> newMessage.delete().queueAfter(90, TimeUnit.SECONDS, null, RestActionUtil.ignore));
 
                 return false;
             });
@@ -98,7 +100,7 @@ public class RequireOnePermissionMiddleware extends Middleware {
                         .map(Permissions::getPermission)
                         .map(Permission::getName)
                         .collect(Collectors.joining("`, `"))
-                    ).queue(newMessage -> newMessage.delete().queueAfter(45, TimeUnit.SECONDS));
+                    ).queue(newMessage -> newMessage.delete().queueAfter(45, TimeUnit.SECONDS, null, RestActionUtil.ignore));
 
                 return false;
             });

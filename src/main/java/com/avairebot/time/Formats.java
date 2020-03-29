@@ -24,6 +24,7 @@ package com.avairebot.time;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.Locale;
 
 public enum Formats {
 
@@ -44,7 +45,7 @@ public enum Formats {
      * <p>
      * Dec 25, 1975
      */
-    FORMATTED_DATE("MMMMM dd, yyyy"),
+    FORMATTED_DATE("MMM dd, yyyy"),
     /**
      * Generates a time string, example:
      * <p>
@@ -115,7 +116,7 @@ public enum Formats {
      * @return the {@link java.text.SimpleDateFormat} format what was created.
      */
     public SimpleDateFormat make() {
-        return new SimpleDateFormat(string);
+        return new SimpleDateFormat(string, Locale.ENGLISH);
     }
 
     /**

@@ -25,7 +25,10 @@ import com.avairebot.AvaIre;
 import com.avairebot.contracts.database.collection.CollectionEach;
 import com.avairebot.utilities.RandomUtil;
 import com.google.gson.Gson;
+import org.apache.commons.collections4.ListUtils;
 
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.sql.ResultSet;
@@ -33,7 +36,16 @@ import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
 import java.util.*;
 
+@SuppressWarnings({"WeakerAccess", "unused"})
 public class Collection implements Cloneable, Iterable<DataRow> {
+
+    /**
+     * The empty collection (immutable).
+     */
+    public static final Collection EMPTY_COLLECTION = new Collection(
+        new HashMap<>(),
+        ListUtils.unmodifiableList(new ArrayList<>())
+    );
 
     private final HashMap<String, String> keys;
     private final List<DataRow> items;
@@ -47,12 +59,24 @@ public class Collection implements Cloneable, Iterable<DataRow> {
     }
 
     /**
+     * Creates a new collection with the given
+     * keys and items instances.
+     *
+     * @param keys  The keys map that should be used for the collection.
+     * @param items The list of items that should be stored in teh collection.
+     */
+    private Collection(HashMap<String, String> keys, List<DataRow> items) {
+        this.keys = keys;
+        this.items = items;
+    }
+
+    /**
      * Creates a new Collection object from the provided collection
      * instance, this is the same as calling the {@link #copy() } method.
      *
      * @param instance The collection to copy
      */
-    public Collection(Collection instance) {
+    public Collection(@Nonnull Collection instance) {
         this.keys = new HashMap<>();
         this.items = new ArrayList<>();
 
@@ -66,7 +90,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *
      * @param items the map of items to create the collection from
      */
-    public Collection(List<Map<String, Object>> items) {
+    public Collection(@Nonnull List<Map<String, Object>> items) {
         this.keys = new HashMap<>();
         this.items = new ArrayList<>();
 
@@ -89,12 +113,15 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *                      form the database <code>ResultSet</code> object, or if the object
      *                      didn't return a valid response.
      */
-    public Collection(ResultSet result) throws SQLException {
-        ResultSetMetaData meta = result.getMetaData();
-
+    public Collection(@Nullable ResultSet result) throws SQLException {
         this.keys = new HashMap<>();
         this.items = new ArrayList<>();
 
+        if (result == null) {
+            return;
+        }
+
+        ResultSetMetaData meta = result.getMetaData();
         for (int i = 1; i <= meta.getColumnCount(); i++) {
             keys.put(meta.getColumnLabel(i), meta.getColumnClassName(i));
         }
@@ -245,7 +272,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      * Gets the first index of the collection.
      *
      * @return either (1) The first <code>DataRow</code> object, generated from the <code>ResultSet</code> object,
-     * or (2) <code>NULL</code> if the collection doesn't have any items.
+     *         or (2) <code>NULL</code> if the collection doesn't have any items.
      */
     public DataRow first() {
         if (items.isEmpty()) {
@@ -324,7 +351,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *
      * @param field the field to use
      * @return either (1) the highest value from the provided field
-     * or (2) <code>Integer.MIN_VALUE</code>
+     *         or (2) <code>Integer.MIN_VALUE</code>
      */
     public int maxInt(String field) {
         if (!has(field)) {
@@ -348,7 +375,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *
      * @param field the field to use
      * @return either (1) the highest value from the provided field
-     * or (2) <code>Long.MIN_VALUE</code>
+     *         or (2) <code>Long.MIN_VALUE</code>
      */
     public long maxLong(String field) {
         if (!has(field)) {
@@ -372,7 +399,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *
      * @param field the field to use
      * @return either (1) the highest value from the provided field
-     * or (2) <code>Double.MIN_VALUE</code>
+     *         or (2) <code>Double.MIN_VALUE</code>
      */
     public double maxDouble(String field) {
         if (!has(field)) {
@@ -396,7 +423,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *
      * @param field the field to use
      * @return either (1) the highest value from the provided field
-     * or (2) <code>Float.MIN_VALUE</code>
+     *         or (2) <code>Float.MIN_VALUE</code>
      */
     public float maxFloat(String field) {
         if (!has(field)) {
@@ -420,7 +447,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *
      * @param field the field to use
      * @return either (1) the lowest value from the provided field
-     * or (2) <code>Integer.MAX_VALUE</code>
+     *         or (2) <code>Integer.MAX_VALUE</code>
      */
     public int minInt(String field) {
         if (!has(field)) {
@@ -444,7 +471,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *
      * @param field the field to use
      * @return either (1) the lowest value from the provided field
-     * or (2) <code>Long.MAX_VALUE</code>
+     *         or (2) <code>Long.MAX_VALUE</code>
      */
     public long minLong(String field) {
         if (!has(field)) {
@@ -468,7 +495,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *
      * @param field the field to use
      * @return either (1) the lowest value from the provided field
-     * or (2) <code>Double.MAX_VALUE</code>
+     *         or (2) <code>Double.MAX_VALUE</code>
      */
     public double minDouble(String field) {
         if (!has(field)) {
@@ -492,7 +519,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      *
      * @param field the field to use
      * @return either (1) the lowest value from the provided field
-     * or (2) <code>Float.MAX_VALUE</code>
+     *         or (2) <code>Float.MAX_VALUE</code>
      */
     public float minFloat(String field) {
         if (!has(field)) {
@@ -554,7 +581,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      * @param field the field to check
      * @param value the value to use
      * @return either (1) the index of the item that matches the search
-     * or (2) -1
+     *         or (2) -1
      */
     public int search(String field, Object value) {
         if (isEmpty() || !has(field)) {
@@ -607,7 +634,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
      * @return the collection instance.
      */
     public Collection sort(Comparator<DataRow> comparator) {
-        Collections.sort(items, comparator);
+        items.sort(comparator);
 
         return this;
     }
@@ -624,7 +651,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
             return this;
         }
 
-        return sort((DataRow first, DataRow second) -> first.get(field).hashCode() - second.get(field).hashCode());
+        return sort(Comparator.comparingInt(row -> row.get(field).hashCode()));
     }
 
     /**
@@ -758,6 +785,7 @@ public class Collection implements Cloneable, Iterable<DataRow> {
         return AvaIre.gson.toJson(items);
     }
 
+    @Nonnull
     @Override
     public Iterator<DataRow> iterator() {
         return new CollectionIterator();

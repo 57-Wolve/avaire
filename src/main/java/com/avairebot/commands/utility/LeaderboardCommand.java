@@ -123,20 +123,20 @@ public class LeaderboardCommand extends Command {
         }
 
         Collection collection = loadTop100From(context);
-        if (collection == null) {
+        if (collection == null || collection.isEmpty()) {
             context.makeWarning(context.i18n("noData")).queue();
             return false;
         }
 
         List<String> messages = new ArrayList<>();
-        SimplePaginator paginator = new SimplePaginator(collection.getItems(), 10);
+        SimplePaginator<DataRow> paginator = new SimplePaginator<>(collection.getItems(), 10);
         if (args.length > 0) {
             paginator.setCurrentPage(NumberUtil.parseInt(args[0], 1));
         }
 
-        paginator.forEach((index, key, val) -> {
-            DataRow row = (DataRow) val;
+        long zeroExperience = avaire.getLevelManager().getExperienceFromLevel(transformer, 0) - 100;
 
+        paginator.forEach((index, key, row) -> {
             Member member = context.getGuild().getMemberById(row.getLong("user_id"));
             String username = row.getString("username") + "#" + row.getString("discriminator");
             if (member != null) {
@@ -148,8 +148,10 @@ public class LeaderboardCommand extends Command {
             messages.add(context.i18n("line")
                 .replace(":num", "" + (index + 1))
                 .replace(":username", username)
-                .replace(":level", NumberUtil.formatNicely(avaire.getLevelManager().getLevelFromExperience(transformer, experience)))
-                .replace(":experience", NumberUtil.formatNicely((experience - 100)))
+                .replace(":level", NumberUtil.formatNicely(
+                    avaire.getLevelManager().getLevelFromExperience(transformer, experience + zeroExperience)
+                ))
+                .replace(":experience", NumberUtil.formatNicely(experience - 100))
             );
         });
 
@@ -168,18 +170,17 @@ public class LeaderboardCommand extends Command {
                         .replace(":num", NumberUtil.formatNicely(rank))
                         .replace(":username", context.getAuthor().getName() + "#" + context.getAuthor().getDiscriminator())
                         .replace(":level", NumberUtil.formatNicely(avaire.getLevelManager().getLevelFromExperience(
-                            context.getGuildTransformer(), context.getPlayerTransformer().getExperience()
+                            context.getGuildTransformer(), context.getPlayerTransformer().getExperience() + zeroExperience
                         )))
                         .replace(":experience", NumberUtil.formatNicely(context.getPlayerTransformer().getExperience() - 100))
-                        + "\n\n" + paginator.generateFooter(generateCommandTrigger(context.getMessage())),
+                        + "\n\n" + paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage())),
                     false
                 );
             }
-
         }
 
         if (message.build().getFields().isEmpty()) {
-            messages.add("\n" + paginator.generateFooter(generateCommandTrigger(context.getMessage())));
+            messages.add("\n" + paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage())));
             message.setDescription(String.join("\n", messages));
         }
 
@@ -193,12 +194,14 @@ public class LeaderboardCommand extends Command {
             try {
                 return avaire.getDatabase().newQueryBuilder(Constants.PLAYER_EXPERIENCE_TABLE_NAME)
                     .where("guild_id", context.getGuild().getId())
+                    .where("active", 1)
                     .orderBy("experience", "desc")
                     .take(100)
                     .get();
             } catch (SQLException e) {
                 log.error("Failed to fetch leaderboard data for server: " + context.getGuild().getId(), e);
-                return null;
+
+                return Collection.EMPTY_COLLECTION;
             }
         });
     }
@@ -208,15 +211,16 @@ public class LeaderboardCommand extends Command {
             try {
                 return avaire.getDatabase().query(String.format(
                     "SELECT COUNT(*) AS rank FROM (" +
-                        "    SELECT `user_id` FROM `experiences` WHERE `guild_id` = '%s' GROUP BY `user_id` HAVING SUM(`experience`) > (" +
-                        "        SELECT SUM(`experience`) FROM `experiences` WHERE `user_id` = '%s' AND `guild_id` = '%s'" +
+                        "    SELECT `user_id` FROM `experiences` WHERE `guild_id` = '%s' AND `active` = 1 GROUP BY `user_id` HAVING SUM(`experience`) > (" +
+                        "        SELECT SUM(`experience`) FROM `experiences` WHERE `user_id` = '%s' AND `guild_id` = '%s' AND `active` = 1" +
                         "    )" +
                         ") t;",
                     context.getGuild().getId(), context.getAuthor().getId(), context.getGuild().getId()
                 ));
             } catch (SQLException e) {
                 log.error("Failed to fetch leaderboard data for user: " + context.getGuild().getId(), e);
-                return null;
+
+                return Collection.EMPTY_COLLECTION;
             }
         });
     }

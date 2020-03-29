@@ -23,18 +23,22 @@ package com.avairebot.commands;
 
 import com.avairebot.AvaIre;
 import com.avairebot.Constants;
+import com.avairebot.commands.system.JSONCmdMapCommand;
 import com.avairebot.contracts.commands.Command;
 import com.avairebot.contracts.commands.CommandSource;
 import com.avairebot.database.controllers.GuildController;
 import com.avairebot.database.transformers.GuildTransformer;
 import com.avairebot.exceptions.InvalidCommandPrefixException;
+import com.avairebot.exceptions.MissingCommandDescriptionException;
 import com.avairebot.metrics.Metrics;
 import com.avairebot.middleware.MiddlewareHandler;
 import net.dv8tion.jda.core.entities.Message;
 import net.dv8tion.jda.core.utils.Checks;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @SuppressWarnings("WeakerAccess")
 public class CommandHandler {
@@ -234,6 +238,52 @@ public class CommandHandler {
     }
 
     /**
+     * Generates a linked hash map of all commands registered to the command handler,
+     * where the key is the name of the category the command is linked to, and the
+     * value is the category data context, the category context will contain
+     * the category prefix and the command data context.
+     * <p>
+     * <b>Note:</b> This method is used for generating the necessary data to produce the
+     * commandMap.json file(See {@link JSONCmdMapCommand JSON Command Map Command} for
+     * more info).
+     *
+     * @param context The command message context that should be used to to generate
+     *                the command data, or {@code NULL}.
+     * @return The generated command map containing details about all the registered commands.
+     */
+    public static LinkedHashMap<String, CategoryDataContext> generateCommandMapFrom(@Nullable CommandMessage context) {
+        if (context == null) {
+            context = new CommandMessage();
+        }
+
+        LinkedHashMap<String, CategoryDataContext> map = new LinkedHashMap<>();
+        for (Category category : CategoryHandler.getValues()) {
+            LinkedHashMap<String, CommandDataContext> categoryCommands = new LinkedHashMap<>();
+
+            for (CommandContainer container : CommandHandler.getCommands().stream()
+                .filter(container -> container.getCategory().equals(category))
+                .sorted(Comparator.comparing(container -> container.getCommand().getClass().getSimpleName()))
+                .collect(Collectors.toList())) {
+
+                context.setI18nCommandPrefix(container);
+
+                categoryCommands.put(
+                    container.getCommand().getClass().getSimpleName(),
+                    new CommandDataContext(container)
+                );
+            }
+
+            if (!categoryCommands.isEmpty()) {
+                map.put(category.getName(), new CategoryDataContext(
+                    category.getPrefix(), categoryCommands
+                ));
+            }
+        }
+
+        return map;
+    }
+
+    /**
      * Gets the highest priority command from the given command
      * list, if the list is empty null is returned instead.
      *
@@ -268,7 +318,14 @@ public class CommandHandler {
     public static void register(@Nonnull Command command) {
         Category category = CategoryHandler.fromCommand(command);
         Checks.notNull(category, String.format("%s :: %s", command.getName(), "Invalid command category, command category"));
-        Checks.notNull(command.getDescription(new FakeCommandMessage()), String.format("%s :: %s", command.getName(), "Command description"));
+
+        try {
+            Checks.notNull(command.getDescription(new FakeCommandMessage()), String.format("%s :: %s", command.getName(), "Command description"));
+            Checks.notNull(command.getDescription(null), String.format("%s :: %s", command.getName(), "Command description with null"));
+            Checks.notNull(command.getDescription(), String.format("%s :: %s", command.getName(), "Command description with no arguments"));
+        } catch (StackOverflowError e) {
+            throw new MissingCommandDescriptionException(command);
+        }
 
         for (String trigger : command.getTriggers()) {
             for (CommandContainer container : COMMANDS) {
@@ -305,6 +362,29 @@ public class CommandHandler {
     }
 
     /**
+     * Unregisters the given command class from the command register.
+     *
+     * @param commandClass The command class that should be unregistered.
+     * @return {@code True} if the command was unregistered successfully,
+     *         {@code False} if the command is not registered.
+     */
+    public static boolean unregister(@Nonnull Class<? extends Command> commandClass) {
+        synchronized (COMMANDS) {
+            Iterator<CommandContainer> iterator = COMMANDS.iterator();
+
+            while (iterator.hasNext()) {
+                CommandContainer container = iterator.next();
+                if (container.getCommand().getClass().getTypeName().equals(commandClass.getTypeName())) {
+                    iterator.remove();
+
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Gets a collection of all the commands
      * registered into the command handler.
      *
@@ -312,5 +392,26 @@ public class CommandHandler {
      */
     public static Collection<CommandContainer> getCommands() {
         return COMMANDS;
+    }
+
+    private static boolean hasImplementedADescriptionMethod(Command command) {
+        try {
+            AvaIre.getLogger().info("{} called hasImplementedADescriptionMethod::withArgs", command.getClass().getTypeName());
+            //noinspection JavaReflectionMemberAccess
+            command.getClass().getMethod("getDescription", CommandMessage.class);
+
+            return true;
+        } catch (NoSuchMethodException ignored) {
+        }
+
+        try {
+            AvaIre.getLogger().info("{} called hasImplementedADescriptionMethod::noArgs", command.getClass().getTypeName());
+            command.getClass().getMethod("getDescription");
+
+            return true;
+        } catch (NoSuchMethodException ignored) {
+        }
+
+        return false;
     }
 }

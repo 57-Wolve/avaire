@@ -98,14 +98,14 @@ public class ListSelfAssignableRolesCommand extends Command {
         }
 
         Collections.sort(items);
-        SimplePaginator paginator = new SimplePaginator(items, 10);
+        SimplePaginator<String> paginator = new SimplePaginator<>(items, 10);
         if (args.length > 0) {
             paginator.setCurrentPage(NumberUtil.parseInt(args[0], 1));
         }
 
         List<String> messages = new ArrayList<>();
         paginator.forEach((index, key, val) -> messages.add(String.format("**%s**", val)));
-        messages.add("\n" + paginator.generateFooter(generateCommandTrigger(context.getMessage())));
+        messages.add("\n" + paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage())));
 
         context.makeSuccess(String.join("\n", messages))
             .setTitle(context.i18n("title", paginator.getTotal()))

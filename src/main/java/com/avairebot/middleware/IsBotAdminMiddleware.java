@@ -22,6 +22,7 @@
 package com.avairebot.middleware;
 
 import com.avairebot.AvaIre;
+import com.avairebot.commands.CommandMessage;
 import com.avairebot.contracts.middleware.Middleware;
 import com.avairebot.factories.MessageFactory;
 import com.avairebot.utilities.RestActionUtil;
@@ -37,13 +38,13 @@ public class IsBotAdminMiddleware extends Middleware {
     }
 
     @Override
-    public String buildHelpDescription(@Nonnull String[] arguments) {
+    public String buildHelpDescription(@Nonnull CommandMessage context, @Nonnull String[] arguments) {
         return "**You must be a Bot Administrator to use this command!**";
     }
 
     @Override
     public boolean handle(@Nonnull Message message, @Nonnull MiddlewareStack stack, String... args) {
-        if (avaire.getBotAdmins().isAdmin(message.getAuthor().getId()).isAdmin()) {
+        if (avaire.getBotAdmins().getUserById(message.getAuthor().getIdLong(), true).isAdmin()) {
             return stack.next();
         }
 
@@ -51,7 +52,7 @@ public class IsBotAdminMiddleware extends Middleware {
             return sendMustBeBotAdminMessage(message);
         }
 
-        if (!avaire.getBotAdmins().isRoleAdmin(message.getAuthor().getIdLong()).isAdmin()) {
+        if (!avaire.getBotAdmins().getUserById(message.getAuthor().getIdLong()).isAdmin()) {
             return sendMustBeBotAdminMessage(message);
         }
 

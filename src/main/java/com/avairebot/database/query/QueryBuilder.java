@@ -44,45 +44,55 @@ public final class QueryBuilder {
      * The instance of the {@link DatabaseManager}.
      */
     private final DatabaseManager dbm;
+
     /**
      * The list of {@link QueryOrder} clauses that should be used by the generator.
      */
     private final List<QueryOrder> order = new ArrayList<>();
+
     /**
      * The list of {@link Clause} clauses that should be used by the generator.
      */
     private final List<QueryClause> wheres = new ArrayList<>();
+
     /**
      * The list of {@link String} clauses that should be used by the generator.
      */
     private final List<String> columns = new ArrayList<>();
+
     /**
      * The list of {@link JoinClause} objects that should be used by the generator.
      */
     private final List<JoinClause> joins = new ArrayList<>();
+
     /**
      * The list of {@link Map} objects that should be used by the generator, containing
      * the column name as the key, and value for the column as a map value.
      */
     private final List<Map<String, Object>> items = new ArrayList<>();
+
     /**
      * The query type that's being preformed.
      */
     private QueryType type;
+
     /**
      * The table the query builder to used.
      */
     private String table = null;
+
     /**
      * The amount of rows to take(LIMIT), if the value is set
      * to -1 it should be ignored by the grammar generator.
      */
     private int take = -1;
+
     /**
      * The amount of rows to skip(OFFSET), if the value is set
      * to -1 it should be ignored by the grammar generator.
      */
     private int skip = -1;
+
     /**
      * Determines if the query should be executed async or not, if the query is
      * executed async it will not return any results, or throw any errors.
@@ -165,13 +175,13 @@ public final class QueryBuilder {
      * <p>
      * Would re-name the username field in the table to name in the collection object.
      *
-     * @param colums The varargs list of columns that should be selected.
+     * @param columns The varargs list of columns that should be selected.
      * @return the query builder instance.
      */
-    public QueryBuilder select(String... colums) {
+    public QueryBuilder select(String... columns) {
         type = QueryType.SELECT;
 
-        for (String column : colums) {
+        for (String column : columns) {
             addColumn(column);
         }
 
@@ -715,9 +725,20 @@ public final class QueryBuilder {
      * while building the query <code>NULL</code> will be returned instead.
      *
      * @return either (1) the generated SQL query
-     * or (2) <code>NULL</code> if an error occurred.
+     *         or (2) <code>NULL</code> if an error occurred.
      */
     public String toSQL() {
+        return toSQL(type);
+    }
+
+    /**
+     * Creates the grammar instance and builds the SQL query using the given query type, if an
+     * error occurs while building the query <code>NULL</code> will be returned instead.
+     *
+     * @return either (1) the generated SQL query
+     *         or (2) <code>NULL</code> if an error occurred.
+     */
+    public String toSQL(QueryType type) {
         try {
             switch (type) {
                 case SELECT:
@@ -739,7 +760,7 @@ public final class QueryBuilder {
      * Runs the {@link Database#query(String)} method with the generated query.
      *
      * @return a <code>Collection</code> object that contains the data produced
-     * by the given query; never <code>null</code>@exception
+     *         by the given query; never <code>null</code>@exception
      * @throws SQLException if a database access error occurs,
      *                      this method is called on a closed <code>Statement</code>, the given
      *                      SQL statement produces anything other than a single
@@ -765,7 +786,7 @@ public final class QueryBuilder {
      *
      * @param closure The changeable closure that should be run.
      * @return either (1) the row count for SQL Data Manipulation Language (DML) statements
-     * or (2) 0 for SQL statements that return nothing
+     *         or (2) 0 for SQL statements that return nothing
      * @throws SQLException if a database access error occurs;
      *                      this method is called on a closed  <code>PreparedStatement</code>
      *                      or the SQL statement returns a <code>ResultSet</code> object
@@ -799,7 +820,7 @@ public final class QueryBuilder {
      *
      * @param arrays The list of items that should be updated
      * @return either (1) the row count for SQL Data Manipulation Language (DML) statements
-     * or (2) 0 for SQL statements that return nothing
+     *         or (2) 0 for SQL statements that return nothing
      * @throws SQLException if a database access error occurs;
      *                      this method is called on a closed  <code>PreparedStatement</code>
      *                      or the SQL statement returns a <code>ResultSet</code> object
@@ -814,7 +835,7 @@ public final class QueryBuilder {
      *
      * @param items The map of items that should be updated
      * @return either (1) the row count for SQL Data Manipulation Language (DML) statements
-     * or (2) 0 for SQL statements that return nothing
+     *         or (2) 0 for SQL statements that return nothing
      * @throws SQLException if a database access error occurs;
      *                      this method is called on a closed  <code>PreparedStatement</code>
      *                      or the SQL statement returns a <code>ResultSet</code> object
@@ -921,7 +942,7 @@ public final class QueryBuilder {
      * method with the current instance of the query builder.
      *
      * @return either (1) the row count for SQL Data Manipulation Language (DML) statements
-     * or (2) 0 for SQL statements that return nothing
+     *         or (2) 0 for SQL statements that return nothing
      * @throws SQLException if a database access error occurs;
      *                      this method is called on a closed  <code>PreparedStatement</code>
      *                      or the SQL statement returns a <code>ResultSet</code> object

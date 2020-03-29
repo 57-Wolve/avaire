@@ -1,3 +1,24 @@
+/*
+ * Copyright (c) 2019.
+ *
+ * This file is part of AvaIre.
+ *
+ * AvaIre is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * AvaIre is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with AvaIre.  If not, see <https://www.gnu.org/licenses/>.
+ *
+ *
+ */
+
 package com.avairebot.commands.fun;
 
 import com.avairebot.AvaIre;
@@ -118,18 +139,18 @@ public class UndertaleTextBoxCommand extends Command {
     }
 
     private boolean sendCharacterList(CommandMessage context, String[] args) {
-        SimplePaginator paginator = new SimplePaginator(Character.names, 10);
+        SimplePaginator<String> paginator = new SimplePaginator<>(Character.names, 10);
         if (args.length > 1) {
             paginator.setCurrentPage(NumberUtil.parseInt(args[1], 1));
         }
 
         List<String> messages = new ArrayList<>();
-        paginator.forEach((index, key, val) -> messages.add((String) val));
+        paginator.forEach((index, key, val) -> messages.add(val));
 
         context.makeInfo(":characters\n\n:paginator")
             .setTitle(context.i18n("title"))
             .set("characters", String.join("\n", messages))
-            .set("paginator", paginator.generateFooter(generateCommandTrigger(context.getMessage())))
+            .set("paginator", paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage())))
             .queue();
 
         return false;

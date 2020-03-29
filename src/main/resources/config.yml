@@ -338,6 +338,134 @@ audio-quality:
     encoding: 10
 
 #--------------------------------------------------------------------------
+# Audio Cache and Storage
+#--------------------------------------------------------------------------
+#
+# Audio caching and storage is used by Ava when requesting music from
+# different providers(YouTube, Soundcloud, etc), allowing the bot
+# save and re-use responses for different queries.
+#
+# The system allows the bot is able to serve users faster if the same song
+# is requested twice, as-well as lowing the number of times needed to
+# send requests to YouTube, Soundcloud, Twitch, etc.
+#
+
+audio-cache:
+
+    # The maximum cache size value is used to determine the maximum amount of
+    # audio playlists that is allowed to be stored in the memory cache for
+    # audio requests.
+    #
+    # The higher the value the more tracks is able to be stored in the cache,
+    # however more tracks stored in-memory also means the bot will require
+    # more RAM to store all the information.
+    #
+    # Note: The in-memory cache will only store data for 30 minutes at a time
+    # unless it's requested a lot, in which case the cached time is reset
+    # until it's not requested anymore.
+    #
+    # The cache isn't necessarily full at any time either, so even if the max
+    # cache size is high, it doesn't mean every slot in the cache is always
+    # used if there isn't enough requested tracks to store in the cache.
+    #
+    maximum-cache-size: 1000
+
+    # The default max cache age is used when querying for search results and
+    # no specific cache age scope is set for the request, some audio cache
+    # lookups may specify their own max cache age, however if non is
+    # defined, the default max cache age will be used instead.
+    #
+    # The cache age is used with looking for search results in the database
+    # cache, if entries are found matching our query but the entries are
+    # older than the max age, it will be excluded from the results.
+    #
+    # The default max cache age is set in seconds, by default it is set to 86,400
+    # which is 24 hours, the number can be raised to increase the lookup range,
+    # or lower it to narrow the search range down, however the number has to
+    # be more than 60 seconds, so the cache is at most 1 minute old.
+    #
+    default-max-cache-age: 86400
+
+    # The max persistence age is the maximum amount of time an audio search result
+    # is allowed to be stored in the database cache before it is counted as
+    # invalid, and is deleted completely from the database.
+    #
+    # Once a track is deleted from the database cache it will no-longer exist in
+    # any cache and will have to be re-requested via a lookup with
+    # the "!play" command to be re-stored in the database.
+    #
+    # The max persistence age is set in seconds, by default it is set to 172,800
+    # which is 48 hours, the number can be raised to store tracks for a longer
+    # period of time, or lowered in order to not store tracks for long
+    # periods of time, however the number has to be greater than
+    # the default max age set above.
+    #
+    max-persistence-age: 172800
+
+#--------------------------------------------------------------------------
+# Audio Ratelimit (Advanced Music Settings)
+#--------------------------------------------------------------------------
+#
+# The audio ratelimiting feature can be used to help circumvent YouTubes
+# request restrictions on larger bots which might send a lot of
+# requests to YouTube for music every second/minute.
+#
+# The system uses a list of IP blocks to generate IPs that should be used for
+# outgoing requests, this means each request can have an unique IP attached
+# to it, or IPs being rotated when it gets banned, the selected strategy
+# will determine what IP is chosen, and whether IPs are re-used or not.
+#
+# This feature requires the server administrator to setup a link to the different
+# subnets they wish the bot to be able to bind with for requests, if the subnets
+# are not configured correctly with the machine, the bot won't be able to bind
+# correctly with the subnet. Thus, this feature should only be enabled if you
+# know what you're doing, music from YouTube will still work with this
+# feature disabled for smaller bots.
+#
+audio-ratelimit:
+
+    # Determines if the audio ratelimiting IP blocks should be used
+    # for outgoing audio requests.
+    #
+    enabled: false
+
+    # A list of IPs or subnets that should be used for audio related requests,
+    # the system will only support one type of IP at a time, so all the IPs
+    # in the block must be either IPv4 or IPv6 addresses, and not both
+    # in the same list.
+    #
+    ip-blocks:
+        - '127.0.0.1/31'
+        - '127.0.0.3/32'
+
+    # A list of IP addresses that should be excluded from being used to make
+    # audio requests, any IP will be ignored for requests and should
+    # never be ratelimited.
+    #
+    exclude-ips:
+        - '127.0.0.2'
+
+    # The ratelimit strategy determines how the bot should send requests to YouTube
+    # to prevent being ratelimited. Different strategies will use up the available
+    # IPs in various of different ways, the following strategies is available.
+    #
+    # LoadBalance
+    #     - Uses a random IP address for each outgoing request.
+    # NanoSwitch
+    #     - Requires a /64 IPv6 subnet, picks an address using a nano offset.
+    # RotateOnBan
+    #     - Rotates to a new IP each time the current address gets ratelimited.
+    # RotatingNanoSwitch
+    #     - Uses a combination of NanoSwitch and RotateOnBan.
+    #
+    strategy: 'NanoSwitch'
+
+    # Determines if a 429 error response code for search requests
+    # should mark an IP address as failing.
+    #
+    search-triggers-fail: true
+
+#--------------------------------------------------------------------------
 # Bot Access (Bot Administrators)
 #--------------------------------------------------------------------------
 #
@@ -345,7 +473,7 @@ audio-quality:
 # able to access all system commands for Ava, things like restarting,
 # system information, code evaluation, etc.
 #
-# You can find your user ID by using the .userid command in Ava.
+# You can find your user ID by using the !userid command in Ava.
 #
 
 botAccess:
@@ -367,37 +495,82 @@ botAccess:
 sentryDsn: ''
 
 #--------------------------------------------------------------------------
-# Prometheus Metrics & Spark API
+# Web Servlet - Prometheus Metrics & API
 #--------------------------------------------------------------------------
 #
-# Ava uses Prometheus metrics for tracking a long list of different things
-# within the application during runtime, the metrics are then displayed
-# using Grafana to users on a web-dashboard using graphs, below you'll
-# find options to enable/disable the metrics system entirely, and
-# change the port that the metrics are exposed to.
+# Ava uses an internal API to power outside applications by allowing the
+# apps to pull information about the bot directly from it, it also
+# collects and exposes internal metrics which can be helpful for
+# seeing what is happening inside the bot in real-time, all
+# this is powered by an internal web servlet.
 #
-# Along with the metrics, a stats API is also enabled, displaying stats
-# per-shard, and globally with guild, channel, and user data, as well
-# as the shard ID and the shard status.
-#
-# The metrics stats are exposed on ip:port/metrics, and the stats API
-# are exposed on ip:port/stats
-#
-# For an real-world example of what the metrics looks like when they're
-# setup using Grafana, checkout: https://goo.gl/tmeiwe
-#
-# For setup guides, see:
-#
-#   https://prometheus.io/
-#   https://grafana.com/
+# The API are exposed on "ip:port", where the port is the web servlet port
+# defined below, note that only the routes that are enabled will actually
+# be exposed through the API, so you can fine tune what you want to
+# expose to the rest of the world.
 #
 
-metrics:
+web-servlet:
 
-  # This option determines if the web API should be enabled at all, if set to
-  # true, the port below will be used to expose the API and metrics stats.
+  # Ava uses Prometheus metrics for tracking a long list of different things
+  # within the application during runtime, the metrics are then displayed
+  # using Grafana to users on a web-dashboard using graphs.
   #
-  enabled: true
+  # For setup guides, see:
+  #
+  #   https://prometheus.io/
+  #   https://grafana.com/
+  #
+  metrics: true
+
+  # Ava exposes some API endpoints for interacting with the bot or pulling
+  # information about of the bot in real-time, below you'll find a list
+  # of different types of API endpoints which can be exposed in
+  # the internal API.
+  #
+  api-routes:
+
+    # Exposes a per-server leaderboard route for getting the 100 users on
+    # the given server ID, as well as some level role and XP settings
+    # information.
+    #
+    # Route:
+    #   GET  /leaderboard/:id
+    #
+    leaderboard: true
+
+    # Exposes a player cleanup route which for getting a list of expired user
+    # XP records, any IDs returned from the route are IDs for users who are
+    # no long on the server the record is attached to.
+    #
+    # Route:
+    #   GET  /players/cleanup
+    #
+    players: true
+
+    # Exposes multiple guild information routes, as well as cleanup routes,
+    # the information routes can be used to pull information about a
+    # specific server by their ID, or to check if the bot is on the
+    # server with the given ID, while the cleanup routes can be
+    # used to get or delete expired and old records for guilds
+    # the bot is no longer on.
+    #
+    # Routes:
+    #   POST /guilds/cleanup
+    #   GET  /guilds/cleanup
+    #   GET  /guilds/:ids/exists
+    #   GET  /guilds/:ids
+    #
+    guilds: true
+
+    # Exposes a stats route which can be used to get some stats on individual
+    # shards, the machine the bot is running on, as well as uptime and
+    # global collected bot info.
+    #
+    # Route:
+    #   GET  /stats
+    #
+    stats: true
 
   # The port the API and metrics should be exposed to, the port must not be used
   # by another application on the system, otherwise the API won't be able to
@@ -416,7 +589,7 @@ metrics:
 #--------------------------------------------------------------------------
 #
 # Vote locking will limit some features so only users who have voted for the
-# bot will be able to use them, voting resets every 24 hours.
+# bot will be able to use them, voting resets every 12 hours.
 #
 # When using the vote-lock feature, make sure the vote webhook has been setup
 # correctly with the auth token, you can find the auth token setting in the
@@ -429,9 +602,21 @@ vote-lock:
 
   # This option determines if the vote-locking feature should be enabled at all,
   # if set to true, any command or feature using the "vote" middleware will be
-  # restricted to users who have voted for the bot within the last 24 hours.
+  # restricted to users who have voted for the bot within the last 12 hours.
+  #
+  # Enabling this option exposes a "/vote" POST route in the web-servlet which
+  # can be used to handle vote request sent by DBL, making it easy and
+  # automatic to reward users when they vote.
   #
   enabled: false
+
+  # This option determines where the vote check requests generated using the "!vote check"
+  # command should be sent, if this option is set to false all requests will use the
+  # "vote-sync-token" below to try and sync the requests with DBLs public API,
+  # however if the option is set to true, the "vote-sync-token" will not be
+  # used, and requests will instead be redirected to Avas public API to
+  # try and sync votes made for the public bot.
+  sync-with-public-bot: false
 
   # This is the bot application API token for DBL(Discord Bot List), the API token
   # is used to sync votes between the API and the bot during startup, so anyone
@@ -451,6 +636,15 @@ vote-lock:
 #
 
 apiKeys:
+
+  # Holiday API key, this is used for the holiday command
+  # in order to retrieve current holiday information.
+  #
+  # You can get a free API key that allows 1000 requests per-month by signing up on
+  # their website, then going to the "API Keys" tab and creating a new key.
+  # Get a key at: https://holidayapi.com/
+  #
+  holidayapi: ''
 
   # Google API key, this is used for music requests to YouTube and the
   # Shorten API for shortening links, note the play command will still

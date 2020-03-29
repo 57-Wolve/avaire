@@ -28,6 +28,8 @@ import com.avairebot.database.DatabaseManager;
 import com.avairebot.database.grammar.mysql.*;
 import com.avairebot.database.query.QueryBuilder;
 import com.avairebot.database.schema.Blueprint;
+import com.avairebot.language.I18n;
+import com.avairebot.utilities.NumberUtil;
 
 import javax.annotation.Nonnull;
 import java.sql.*;
@@ -64,9 +66,7 @@ public class MySQL extends HostnameDatabase {
      * @param password The password for the given username.
      */
     public MySQL(DatabaseManager dbm, String hostname, int port, String database, String username, String password) {
-        super(hostname, port, database, username, password);
-
-        setDatabaseManager(dbm);
+        super(dbm, hostname, port, database, username, password);
     }
 
     @Override
@@ -85,7 +85,7 @@ public class MySQL extends HostnameDatabase {
     @Override
     public boolean open() throws SQLException {
         try {
-            String url = String.format("jdbc:mysql://%s:%d/%s?verifyServerCertificate=%s&useSSL=true",
+            String url = String.format("jdbc:mysql://%s:%d/%s?autoReconnect=true&verifyServerCertificate=%s&useSSL=true",
                 getHostname(), getPort(), getDatabase(),
                 dbm.getAvaire().getConfig().getBoolean("database.verifyServerCertificate", true) ? "true" : "false"
             );
@@ -129,6 +129,22 @@ public class MySQL extends HostnameDatabase {
                 AvaIre.getLogger().error("Please use the prepare() method to prepare a query.", exception);
                 throw exception;
         }
+    }
+
+    @Override
+    public String prepareDataValueString(String str) {
+        if (NumberUtil.isNumeric(str)) {
+            return str;
+        }
+
+        return I18n.format("'{0}'", str
+            .replaceAll("\\\\", "\\\\\\\\")
+            .replaceAll("\\n", "\\\\\\\\n")
+            .replaceAll("\\r", "\\\\\\\\r")
+            .replaceAll("\\t", "\\\\\\\\t")
+            .replaceAll("\\00", "\\\\\\\\00")
+            .replaceAll("'", "\\\\\'")
+        );
     }
 
     @Override
@@ -182,22 +198,27 @@ public class MySQL extends HostnameDatabase {
         return false;
     }
 
+    @Override
     public String select(DatabaseManager manager, QueryBuilder query, Map<String, Boolean> options) {
         return setupAndRun(new Select(), query, manager, options);
     }
 
+    @Override
     public String create(DatabaseManager manager, Blueprint blueprint, @Nonnull Map<String, Boolean> options) {
         return setupAndRun(new Create(), blueprint, manager, options);
     }
 
+    @Override
     public String delete(DatabaseManager manager, QueryBuilder query, Map<String, Boolean> options) {
         return setupAndRun(new Delete(), query, manager, options);
     }
 
+    @Override
     public String insert(DatabaseManager manager, QueryBuilder query, Map<String, Boolean> options) {
         return setupAndRun(new Insert(), query, manager, options);
     }
 
+    @Override
     public String update(DatabaseManager manager, QueryBuilder query, Map<String, Boolean> options) {
         return setupAndRun(new Update(), query, manager, options);
     }

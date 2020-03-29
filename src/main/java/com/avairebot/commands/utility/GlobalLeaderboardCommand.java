@@ -125,7 +125,7 @@ public class GlobalLeaderboardCommand extends Command {
 
     private boolean handleCommand(@Nonnull CommandMessage context, @Nonnull String[] args, @Nullable Message loadingMessage) {
         Collection collection = loadTop100From();
-        if (collection == null) {
+        if (collection == null || collection.isEmpty()) {
             if (loadingMessage != null) {
                 loadingMessage.delete().queue(null, RestActionUtil.ignore);
             }
@@ -134,14 +134,12 @@ public class GlobalLeaderboardCommand extends Command {
         }
 
         List<String> messages = new ArrayList<>();
-        SimplePaginator paginator = new SimplePaginator(collection.getItems(), 10);
+        SimplePaginator<DataRow> paginator = new SimplePaginator<>(collection.getItems(), 10);
         if (args.length > 0) {
             paginator.setCurrentPage(NumberUtil.parseInt(args[0], 1));
         }
 
-        paginator.forEach((index, key, val) -> {
-            DataRow row = (DataRow) val;
-
+        paginator.forEach((index, key, row) -> {
             Member member = context.getGuild().getMemberById(row.getLong("user_id"));
             String username = row.getString("username") + "#" + row.getString("discriminator");
             if (member != null) {
@@ -174,7 +172,7 @@ public class GlobalLeaderboardCommand extends Command {
                             .replace(":username", context.getAuthor().getName() + "#" + context.getAuthor().getDiscriminator())
                             .replace(":level", NumberUtil.formatNicely(avaire.getLevelManager().getLevelFromExperience(experience)))
                             .replace(":experience", NumberUtil.formatNicely(experience - 100))
-                            + "\n\n" + paginator.generateFooter(generateCommandTrigger(context.getMessage())),
+                            + "\n\n" + paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage())),
                         false
                     );
                 }
@@ -182,7 +180,7 @@ public class GlobalLeaderboardCommand extends Command {
         }
 
         if (message.build().getFields().isEmpty()) {
-            messages.add("\n" + paginator.generateFooter(generateCommandTrigger(context.getMessage())));
+            messages.add("\n" + paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage())));
             message.setDescription(String.join("\n", messages));
         }
 
@@ -199,15 +197,17 @@ public class GlobalLeaderboardCommand extends Command {
         return (Collection) CacheUtil.getUncheckedUnwrapped(cache, "leaderboard", () -> {
             try {
                 return avaire.getDatabase().query("SELECT " +
-                    "`user_id`, `username`, `discriminator`, (sum(`experience`) - (count(`user_id`) * 100)) + 100 as `total` " +
+                    "`user_id`, `username`, `discriminator`, (sum(`global_experience`) - (count(`user_id`) * 100)) + 100 as `total` " +
                     "FROM `experiences` " +
+                    "WHERE `active` = 1 " +
                     "GROUP BY `user_id` " +
                     "ORDER BY `total` DESC " +
                     "LIMIT 100;"
                 );
             } catch (SQLException e) {
                 log.error("Failed to fetch global leaderboard data", e);
-                return null;
+
+                return Collection.EMPTY_COLLECTION;
             }
         });
     }
@@ -217,15 +217,16 @@ public class GlobalLeaderboardCommand extends Command {
             try {
                 return avaire.getDatabase().query(String.format(
                     "SELECT COUNT(*) AS rank FROM (" +
-                        "    SELECT `user_id` FROM `experiences` GROUP BY `user_id` HAVING SUM(`experience`) > (" +
-                        "        SELECT SUM(`experience`) FROM `experiences` WHERE `user_id` = '%s'" +
+                        "    SELECT `user_id` FROM `experiences` WHERE `active` = 1 GROUP BY `user_id` HAVING SUM(`global_experience`) > (" +
+                        "        SELECT SUM(`global_experience`) FROM `experiences` WHERE `user_id` = '%s' AND `active` = 1" +
                         "    )" +
                         ") t;",
                     context.getAuthor().getId()
                 ));
             } catch (SQLException e) {
                 log.error("Failed to fetch leaderboard data for user: " + context.getGuild().getId(), e);
-                return null;
+
+                return Collection.EMPTY_COLLECTION;
             }
         });
     }
@@ -234,12 +235,14 @@ public class GlobalLeaderboardCommand extends Command {
         return (Collection) CacheUtil.getUncheckedUnwrapped(cache, "user.xp." + context.getAuthor().getId(), () -> {
             try {
                 return avaire.getDatabase().newQueryBuilder(Constants.PLAYER_EXPERIENCE_TABLE_NAME)
-                    .selectRaw("(sum(`experience`) - (count(`user_id`) * 100)) + 100 as `total`")
+                    .selectRaw("(sum(`global_experience`) - (count(`user_id`) * 100)) + 100 as `total`")
                     .where("user_id", context.getAuthor().getIdLong())
+                    .where("active", 1)
                     .get();
             } catch (SQLException e) {
                 log.error("Failed to fetch leaderboard data for user: " + context.getGuild().getId(), e);
-                return null;
+
+                return Collection.EMPTY_COLLECTION;
             }
         });
     }

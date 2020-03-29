@@ -22,16 +22,30 @@
 package com.avairebot.utilities;
 
 import javax.annotation.Nonnull;
+import java.awt.*;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.List;
 
+/**
+ * The type Random util.
+ */
 public class RandomUtil {
+
+    /**
+     * A list of characters that can be used to generate the string randomly.
+     */
+    private static final List<String> characterSet = Arrays.asList(
+        "q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "a", "s", "d", "f", "g", "h", "j", "k", "l", "z", "x", "c", "v", "b", "n", "m",
+        "Q", "W", "E", "R", "T", "Y", "U", "I", "O", "P", "A", "S", "D", "F", "G", "H", "J", "K", "L", "Z", "X", "C", "V", "B", "N", "M",
+        "0", "1", "2", "3", "4", "5", "6", "7", "9", "8", "!", "%", "&", "(", ")", "[", "]", "{", "}"
+    );
 
     /**
      * The globally used random instance that
      * is used for all randomized... things.
      */
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private static final SecureRandom random = new SecureRandom();
 
     /**
      * Returns true or false randomly.
@@ -39,7 +53,7 @@ public class RandomUtil {
      * @return Either true or false.
      */
     public static boolean getBoolean() {
-        return RANDOM.nextBoolean();
+        return random.nextBoolean();
     }
 
     /**
@@ -54,7 +68,22 @@ public class RandomUtil {
         if (bound <= 0) {
             return 0;
         }
-        return RANDOM.nextInt(bound);
+        return random.nextInt(bound);
+    }
+
+    /**
+     * Gets a sRGB color with a random
+     * red, green, blue, and alpha component.
+     *
+     * @return The random color
+     */
+    public static Color getRandomColor() {
+        return new Color(
+            random.nextInt(255) / 255F, // Red
+            random.nextInt(255) / 255F, // Green
+            random.nextInt(255) / 255F, // Blue
+            random.nextInt(100) / 100F  // Alpha
+        );
     }
 
     /**
@@ -64,7 +93,7 @@ public class RandomUtil {
      * @return The random string picked from the list of given strings.
      */
     public static String pickRandom(@Nonnull String... strings) {
-        return strings[RANDOM.nextInt(strings.length)];
+        return strings[random.nextInt(strings.length)];
     }
 
     /**
@@ -74,6 +103,20 @@ public class RandomUtil {
      * @return The random string picked from the list of given strings.
      */
     public static Object pickRandom(@Nonnull List<?> strings) {
-        return strings.get(RANDOM.nextInt(strings.size()));
+        return strings.get(random.nextInt(strings.size()));
+    }
+
+    /**
+     * Generate a randomly generated string with the given length.
+     *
+     * @param length The length of the randomly generated string.
+     * @return The randomly generated string.
+     */
+    public static String generateString(int length) {
+        StringBuilder tokenBuilder = new StringBuilder();
+        for (int i = 0; i < length; i++) {
+            tokenBuilder.append(RandomUtil.pickRandom(characterSet));
+        }
+        return tokenBuilder.toString();
     }
 }

@@ -1,29 +1,24 @@
-FROM gradle:jdk10 AS build
+# Build container
 
-USER root
+FROM gradle:4.10.2-jdk11-slim AS build
 
-COPY . /app
-WORKDIR /app
-RUN chmod a+x buildpack-run.sh; \
-	./buildpack-run.sh; \
-	gradle build --stacktrace
+COPY --chown=gradle:gradle . /home/gradle/src
+WORKDIR /home/gradle/src
+RUN gradle build --no-daemon
 
-FROM anapsix/alpine-java AS runtime
+# Run container
 
-RUN mkdir -p /opt/avaire
-COPY --from=build /app/AvaIre.jar /opt/avaire/AvaIre.jar
+FROM openjdk:11-jre-slim AS runtime
+
+WORKDIR /opt/avaire/
 
 RUN adduser --disabled-password --gecos '' avaire; \
     chown avaire:avaire -R /opt/avaire; \
     chmod u+w /opt/avaire; \
     chmod 0755 -R /opt/avaire
 
-VOLUME [ "/opt/avaire/plugins" ]
-VOLUME [ "/opt/avaire/storage" ]
-VOLUME [ "/opt/avaire/config.yml" ]
-
-WORKDIR /opt/avaire
-
 USER avaire
 
-CMD ["java", "-jar", "/opt/avaire/AvaIre.jar"]
+COPY --from=build /home/gradle/src/AvaIre.jar /bin/
+
+CMD ["java","-jar","/bin/AvaIre.jar","-env","--use-plugin-index"]

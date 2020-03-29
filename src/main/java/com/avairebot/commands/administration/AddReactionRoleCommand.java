@@ -41,6 +41,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Collections;
@@ -75,7 +76,7 @@ public class AddReactionRoleCommand extends Command {
     @Override
     public List<String> getExampleUsage() {
         return Collections.singletonList(
-            "`:command :avaPotato Potato` - Gives users the Potato role when the reaction with the :avaPotato: reaction."
+            "`:command :avaPotato: Potato` - Gives users the Potato role when the reaction with the :avaPotato: reaction."
         );
     }
 
@@ -96,6 +97,7 @@ public class AddReactionRoleCommand extends Command {
     public List<String> getMiddleware() {
         return Arrays.asList(
             "require:user,general.administrator",
+            "require:bot,general.manage_roles",
             "throttle:guild,1,5"
         );
     }
@@ -117,12 +119,12 @@ public class AddReactionRoleCommand extends Command {
             );
         }
 
-        if (args.length == 0 || context.getMessage().getEmotes().isEmpty()) {
+        if (args.length == 0) {
             return sendErrorMessage(context, "errors.missingArgument", "reaction emote");
         }
 
-        Emote emote = context.getMessage().getEmotes().get(0);
-        if (emote.getGuild() == null || emote.getGuild().getIdLong() != context.getGuild().getIdLong()) {
+        Emote emote = getEmote(context, args);
+        if (emote == null || emote.getGuild() == null || emote.getGuild().getIdLong() != context.getGuild().getIdLong()) {
             return sendErrorMessage(context, context.i18n("emoteDoestBelongToServer"));
         }
 
@@ -138,7 +140,7 @@ public class AddReactionRoleCommand extends Command {
         );
 
         if (role == null) {
-            return sendErrorMessage(context, "errors.invalidProperty", "reaction role");
+            return sendErrorMessage(context, "errors.invalidProperty", "reaction role", "role");
         }
 
         if (!RoleUtil.canInteractWithRole(context.getMessage(), role)) {
@@ -161,7 +163,7 @@ public class AddReactionRoleCommand extends Command {
 
             if (reactionTransformer.getRoles().size() >= guildTransformer.getType().getLimits().getReactionRoles().getRolesPerMessage()) {
                 context.makeWarning(context.i18n("messageHasNoSlots"))
-                    .queue(noSlotsMessage -> noSlotsMessage.delete().queueAfter(15, TimeUnit.SECONDS));
+                    .queue(noSlotsMessage -> noSlotsMessage.delete().queueAfter(15, TimeUnit.SECONDS, null, RestActionUtil.ignore));
                 return;
             }
 
@@ -184,7 +186,7 @@ public class AddReactionRoleCommand extends Command {
                     .set("emote", emote.getAsMention())
                     .set("roleSlots", reactionLimits.getRolesPerMessage() - reactionTransformer.getRoles().size())
                     .set("messageSlots", reactionLimits.getMessages() - ReactionController.fetchReactions(avaire, context.getGuild()).size())
-                    .queue(successMessage -> successMessage.delete().queueAfter(15, TimeUnit.SECONDS));
+                    .queue(successMessage -> successMessage.delete().queueAfter(15, TimeUnit.SECONDS, null, RestActionUtil.ignore));
 
                 ReactionController.forgetCache(context.getGuild().getIdLong());
             } catch (SQLException e) {
@@ -194,6 +196,21 @@ public class AddReactionRoleCommand extends Command {
         });
 
         return true;
+    }
+
+    @Nullable
+    private Emote getEmote(CommandMessage context, String[] args) {
+        if (!context.getMessage().getEmotes().isEmpty()) {
+            return context.getMessage().getEmotes().get(0);
+        }
+
+        try {
+            long id = Long.parseLong(args[0].trim());
+
+            return context.getGuild().getEmoteById(id);
+        } catch (NumberFormatException e) {
+            return null;
+        }
     }
 
     @SuppressWarnings("UnusedReturnValue")
@@ -207,7 +224,7 @@ public class AddReactionRoleCommand extends Command {
 
         if (collection.size() >= transformer.getType().getLimits().getReactionRoles().getMessages()) {
             context.makeWarning(context.i18n("serverHasNoSlots"))
-                .queue(noSlotsMessage -> noSlotsMessage.delete().queueAfter(15, TimeUnit.SECONDS));
+                .queue(noSlotsMessage -> noSlotsMessage.delete().queueAfter(15, TimeUnit.SECONDS, null, RestActionUtil.ignore));
             return false;
         }
 
@@ -240,7 +257,7 @@ public class AddReactionRoleCommand extends Command {
                     .set("emote", emote.getAsMention())
                     .set("roleSlots", reactionLimits.getRolesPerMessage() - reactionTransformer.getRoles().size())
                     .set("messageSlots", reactionLimits.getMessages() - (collection.size() + 1))
-                    .queue(successMessage -> successMessage.delete().queueAfter(15, TimeUnit.SECONDS));
+                    .queue(successMessage -> successMessage.delete().queueAfter(15, TimeUnit.SECONDS, null, RestActionUtil.ignore));
 
                 ReactionController.forgetCache(context.getGuild().getIdLong());
             } catch (SQLException e) {

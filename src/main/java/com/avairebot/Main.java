@@ -38,11 +38,13 @@ public class Main {
         options.addOption(new Option("h", "help", false, "Displays this help menu."));
         options.addOption(new Option("v", "version", false, "Displays the current version of the application."));
         options.addOption(new Option("sc", "shard-count", true, "Sets the amount of shards the bot should start up."));
-        options.addOption(new Option("is", "internal-restart", false, "Enables internal restarts, this will auto restart the bot if it crashes, or the system restart or update commands are used, the only way to really shut down the bot is through the system shutdown command.\nNote: The update command will just act as the restart command with this option enabled."));
+        options.addOption(new Option("s", "shards", true, "Sets the shard IDs that should be started up, the shard IDs should be formatted by the lowest shard ID to start up, and the highest shard ID to start up, separated by a dash.\nExample: \"--shards=4-9\" would start up shard 4, 5, 6, 7, 8, and 9."));
         options.addOption(new Option("m", "music", false, "Enables music-only mode, disabling any feature that is not related to the music features."));
+        options.addOption(new Option("upi", "use-plugin-index", false, "Enables the use of the plugin index, this will automatically re-download any plugin that is registered in the plugin index, but is not found in the plugins directory."));
         options.addOption(new Option("env", "use-environment-variables", false, "Enables environment variables override for the config options, this allows for setting up environment variables like \"AVA_DISCORD_TOKEN\" to override the \"discord.token\" option in the config. Every option in the config can be overwritten with an environment variable called \"AVA_\" plus the path to the config option in all uppercase, and any special characters replaced with an underscore(_), for example \"database.type\" would be \"AVA_DATABASE_TYPE\".\nNote: None of the values are stored in the config permanently, removing the environment variable will make the bot use the config option again(after a restart)."));
         options.addOption(new Option("nocolor", "no-colors", false, "Disables colors for commands and AI actions in the terminal."));
         options.addOption(new Option("d", "debug", false, "Enables debugging mode, this will log extra information to the terminal."));
+        options.addOption(new Option("gsf", "generate-json-file", false, "Enters command generation mode, when this flag is enabled, the bot won't actually start, but will instead generate a \"commandMap.json\" file containing information about all the registered commands. This file is used for avairebot.com to generate the commands page."));
 
         CommandLineParser parser = new DefaultParser();
         HelpFormatter formatter = new HelpFormatter();
@@ -68,7 +70,7 @@ public class Main {
                 System.exit(ExitCodes.EXIT_CODE_NORMAL);
             }
 
-            new AvaIre(settings);
+            AvaIre.avaire = new AvaIre(settings);
         } catch (ParseException e) {
             System.out.println(e.getMessage());
             formatter.printHelp("", options);

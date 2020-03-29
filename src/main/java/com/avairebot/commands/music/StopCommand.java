@@ -96,6 +96,7 @@ public class StopCommand extends Command {
         String guildId = context.getGuild().getId();
         int size = musicManager.getScheduler().getQueue().size();
 
+        musicManager.setRepeatState(GuildMusicManager.RepeatState.LOOPOFF);
         musicManager.getPlayer().stopTrack();
         musicManager.getScheduler().getQueue().clear();
 
@@ -105,9 +106,9 @@ public class StopCommand extends Command {
 
         if (LavalinkManager.LavalinkManagerHolder.lavalink.isEnabled()) {
             JdaLink link = LavalinkManager.LavalinkManagerHolder.lavalink.getLavalink()
-                .getLink(context.getGuild());
+                .getExistingLink(context.getGuild());
 
-            if (!LavalinkManager.LavalinkManagerHolder.lavalink.isLinkBeingDestroyed(link)) {
+            if (link != null && !LavalinkManager.LavalinkManagerHolder.lavalink.isLinkBeingDestroyed(link)) {
                 link.destroy();
             }
         }

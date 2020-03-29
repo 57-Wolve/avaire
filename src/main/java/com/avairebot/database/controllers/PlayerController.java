@@ -74,8 +74,8 @@ public class PlayerController {
                     avaire.getDatabase()
                         .newQueryBuilder(Constants.PLAYER_EXPERIENCE_TABLE_NAME)
                         .select(requiredPlayerColumns)
-                        .where("user_id", user.getId())
-                        .andWhere("guild_id", message.getGuild().getId())
+                        .where("experiences.user_id", user.getId())
+                        .andWhere("experiences.guild_id", message.getGuild().getId())
                         .get().first()
                 );
 
@@ -92,7 +92,8 @@ public class PlayerController {
                                 .set("username", user.getName(), true)
                                 .set("discriminator", user.getDiscriminator())
                                 .set("avatar", user.getAvatarId())
-                                .set("experience", 100);
+                                .set("experience", 100)
+                                .set("global_experience", 100);
                         });
 
                     return mergeWithExperienceEntity(avaire, transformer);
@@ -106,9 +107,20 @@ public class PlayerController {
                     updateUserData(user);
                 }
 
+                if (!transformer.isActive()) {
+                    avaire.getDatabase()
+                        .newQueryBuilder(Constants.PLAYER_EXPERIENCE_TABLE_NAME)
+                        .where("experiences.user_id", user.getId())
+                        .andWhere("experiences.guild_id", message.getGuild().getId())
+                        .update(statement -> {
+                            statement.set("active", true);
+                        });
+                }
+
                 return mergeWithExperienceEntity(avaire, transformer);
             } catch (Exception ex) {
-                AvaIre.getLogger().error(ex.getMessage(), ex);
+                log.error("Failed to fetch player transformer from the database, error: {}", ex.getMessage(), ex);
+
                 return null;
             }
         });
@@ -144,6 +156,32 @@ public class PlayerController {
 
     private static String asKey(@Nonnull Guild guild, @Nonnull User user) {
         return guild.getId() + ":" + user.getId();
+    }
+
+    public static void forgetCache(long userId) {
+        List<String> toRemove = new ArrayList<>();
+        for (String key : cache.asMap().keySet()) {
+            if (key.endsWith(":" + userId)) {
+                toRemove.add(key);
+            }
+        }
+
+        if (!toRemove.isEmpty()) {
+            cache.invalidateAll(toRemove);
+        }
+    }
+
+    public static void forgetCacheForGuild(long guildId) {
+        List<String> toRemove = new ArrayList<>();
+        for (String key : cache.asMap().keySet()) {
+            if (key.startsWith(guildId + ":")) {
+                toRemove.add(key);
+            }
+        }
+
+        if (!toRemove.isEmpty()) {
+            cache.invalidateAll(toRemove);
+        }
     }
 
     public static class PlayerUpdateReference {

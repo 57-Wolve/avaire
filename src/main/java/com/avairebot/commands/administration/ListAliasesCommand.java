@@ -23,6 +23,8 @@ package com.avairebot.commands.administration;
 
 import com.avairebot.AvaIre;
 import com.avairebot.chat.SimplePaginator;
+import com.avairebot.commands.CommandContainer;
+import com.avairebot.commands.CommandHandler;
 import com.avairebot.commands.CommandMessage;
 import com.avairebot.contracts.commands.Command;
 import com.avairebot.contracts.commands.CommandGroup;
@@ -92,14 +94,23 @@ public class ListAliasesCommand extends Command {
             return sendErrorMessage(context, context.i18n("noAliases", generateCommandPrefix(context.getMessage())));
         }
 
-        SimplePaginator paginator = new SimplePaginator(transformer.getAliases(), 10);
+        SimplePaginator<String> paginator = new SimplePaginator<>(transformer.getAliases(), 10);
         if (args.length > 0) {
             paginator.setCurrentPage(NumberUtil.parseInt(args[0], 1));
         }
 
         List<String> messages = new ArrayList<>();
-        paginator.forEach((index, key, val) -> messages.add(String.format("`%s` => `%s`", key, val)));
-        messages.add("\n" + paginator.generateFooter(generateCommandTrigger(context.getMessage())));
+        paginator.forEach((index, key, val) -> {
+            String trigger = val.split(" ")[0];
+
+            CommandContainer container = CommandHandler.getRawCommand(trigger);
+            if (container != null) {
+                val = val.replaceFirst(trigger, container.getCommand().generateCommandTrigger(context.getMessage()));
+            }
+
+            messages.add(String.format("`%s` => `%s`", key, val));
+        });
+        messages.add("\n" + paginator.generateFooter(context.getGuild(), generateCommandTrigger(context.getMessage())));
 
         context.makeSuccess(String.join("\n", messages))
             .setTitle(context.i18n("listAliases", paginator.getTotal()))
